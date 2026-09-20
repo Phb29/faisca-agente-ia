@@ -1,0 +1,3 @@
+# Jev decide, LLM escreve
+
+O Jev (TypeSafe AI) não gera texto: responde perguntas tipadas (Choice, Score, Noul) sobre um estado, em milissegundos e com probabilidades calibradas. Por isso ele não é usado para saída estruturada da resposta ao Cliente, que fica com o LLM da OpenAI e modelos Pydantic. O Jev é o motor de todas as decisões rápidas e binárias do grafo: Guardrail de entrada, Guardrail de saída, Roteador de intenção e Gate de Aprovação do Reembolso. A alternativa de fazer essas decisões com um LLM via prompt foi rejeitada por custo, latência e ausência de probabilidade calibrada para definir limiares.

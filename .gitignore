@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+# Node
+node_modules/
+.next/
+out/
+# Ambiente
+.env
+.env.local
+# Modelos e caches
+.cache/
+fastembed_cache/
+# SO e IDE
+.DS_Store
+.idea/
+.vscode/

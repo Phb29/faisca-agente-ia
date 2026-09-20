@@ -1,0 +1,3 @@
+# Três papéis de modelo: gerador, juiz e trabalhador
+
+Cada nó do grafo recebe o modelo mais barato que dá conta da tarefa, e os papéis são nomeados numa única fábrica de modelos. Gerador (gpt-5.6-terra) escreve as respostas ao Cliente e decide qual Ação chamar. Juiz (gpt-5.6-sol) só roda nos evals, e é deliberadamente mais forte e diferente do gerador para não avaliar a própria escrita. Trabalhador (gpt-oss-120b na Groq) faz as tarefas de bastidor do tipo "leia texto e devolva JSON": extração de memórias, resumo da Conversa e resumo do Ticket. A alternativa de usar um único modelo caro em tudo foi rejeitada de propósito, porque o projeto quer demonstrar que isso é um erro comum em produção.

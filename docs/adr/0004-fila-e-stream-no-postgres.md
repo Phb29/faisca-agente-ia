@@ -1,0 +1,3 @@
+# Fila, idempotência e stream de tokens no Postgres
+
+A API recebe mensagens com um message_id gerado no cliente, grava numa tabela de fila com chave única (idempotência) e responde 202. Um worker separado consome com SELECT FOR UPDATE SKIP LOCKED e executa o grafo. Os tokens viajam do worker para a API por LISTEN/NOTIFY, e a API repassa por SSE com cinco eventos: token, tool_call, approval_required, message_done e error. A resposta final é gravada para permitir recuperação após reconexão. Redis (Celery, arq, Pub/Sub) foi rejeitado para não adicionar um terceiro serviço no Railway, e executar o grafo dentro da API foi rejeitado porque tornaria a fila decorativa.
