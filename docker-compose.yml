@@ -1,6 +1,32 @@
+# Sobe tudo: `docker compose up --build`. Só a infra: `docker compose up -d postgres qdrant`.
+# As chaves (OPENAI_API_KEY, GROQ_API_KEY, TYPESAFE_API_KEY, LANGFUSE_*) vêm do .env ou do
+# ambiente; sem nenhuma delas, deixe MODELOS_FALSOS=true para rodar sem gastar token.
+
+x-backend: &backend
+  build: ./backend
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    DATABASE_URL: postgresql://ampere:ampere@postgres:5432/ampere
+    QDRANT_URL: http://qdrant:6333
+    MODELOS_FALSOS: ${MODELOS_FALSOS:-false}
+    OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    GROQ_API_KEY: ${GROQ_API_KEY:-}
+    TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+    LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+    LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+    LANGFUSE_HOST: ${LANGFUSE_HOST:-https://cloud.langfuse.com}
+    ATENDENTE_TOKEN: ${ATENDENTE_TOKEN:-atendente-secreto}
+  depends_on:
+    postgres:
+      condition: service_healthy
+    qdrant:
+      condition: service_healthy
+
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: ampere
       POSTGRES_PASSWORD: ampere
@@ -16,7 +42,7 @@ services:
       retries: 10
 
   qdrant:
-    image: qdrant/qdrant:v1.15.4
+    image: qdrant/qdrant:v1.19.1
     ports:
       - "6333:6333"
       - "6334:6334"
@@ -27,6 +53,40 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  # A api e o worker usam a mesma imagem; só o comando muda (ADR 0004).
+  api:
+    <<: *backend
+    command: ampere api
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  worker:
+    <<: *backend
+    command: ampere worker
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   postgres_data:

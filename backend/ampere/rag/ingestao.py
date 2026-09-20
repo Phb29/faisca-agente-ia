@@ -10,6 +10,8 @@ from ampere.rag.documentos import carregar_documentos
 from ampere.rag.embedders import Embedder
 from ampere.rag.indice import criar_colecao, indexar_chunks
 
+PASTA_PADRAO = Path(__file__).parent / "base_de_conhecimento"
+
 
 def ingerir(
     pasta: Path,

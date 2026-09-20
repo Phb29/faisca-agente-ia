@@ -176,3 +176,20 @@ def test_jev_falso_aceita_sequencia_de_probabilidades_por_pergunta():
     terceira = jev.perguntar("c", PERGUNTAS).nouls["escopo"].probabilidade
 
     assert (primeira, segunda, terceira) == (0.9, 0.1, 0.1)
+
+
+def test_modelo_falso_sem_roteiro_devolve_instancia_padrao_do_schema():
+    from typing import Literal
+
+    class Resumo(BaseModel):
+        resumo: str
+        categoria: Literal["troca", "outro"]
+        prioridade: str = "media"
+        fatos: list[str] = []
+
+    resultado = ModeloFalso().with_structured_output(Resumo).invoke([HumanMessage("x")])
+
+    assert isinstance(resultado, Resumo)
+    assert resultado.categoria == "troca"
+    assert resultado.prioridade == "media"
+    assert "modelo falso" in resultado.resumo

@@ -49,6 +49,8 @@ class ModeloFalso(BaseChatModel):
         for resposta in reversed(self.respostas[: self._posicao]):
             if tipo is None or isinstance(resposta, tipo):
                 return resposta
+        if isinstance(tipo, type) and issubclass(tipo, BaseModel):
+            return instancia_padrao(tipo)
         raise AssertionError(f"ModeloFalso sem resposta do tipo {tipo}")
 
     def _proxima_mensagem(self) -> AIMessage:
@@ -143,6 +145,33 @@ class JevFalso:
                 probabilidades = {o: (1.0 if o == escolha else 0.0) for o in opcoes}
                 respostas.choices[nome] = RespostaChoice(escolha, 1.0, probabilidades)
         return respostas
+
+
+def instancia_padrao(schema: type[BaseModel]) -> BaseModel:
+    """Instância "vazia" de um modelo Pydantic, para o sistema inteiro rodar com falsos."""
+    import typing
+
+    valores: dict[str, Any] = {}
+    for nome, campo in schema.model_fields.items():
+        if not campo.is_required():
+            continue
+        anotacao = campo.annotation
+        origem = typing.get_origin(anotacao)
+        if origem is typing.Literal:
+            valores[nome] = typing.get_args(anotacao)[0]
+        elif anotacao is str:
+            valores[nome] = "(modelo falso)"
+        elif anotacao is bool:
+            valores[nome] = False
+        elif anotacao in (int, float):
+            valores[nome] = 0
+        elif origem in (list, set, tuple) or anotacao in (list, set, tuple):
+            valores[nome] = []
+        elif origem is dict or anotacao is dict:
+            valores[nome] = {}
+        else:
+            valores[nome] = None
+    return schema(**valores)
 
 
 def embed_falso(textos: list[str]) -> list[list[float]]:

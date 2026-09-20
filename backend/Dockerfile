@@ -20,4 +20,4 @@ RUN uv run python -c "from ampere.rag.indice import baixar_modelos; baixar_model
 
 ENV PATH="/app/.venv/bin:$PATH" PORT=8000
 EXPOSE 8000
-CMD ["sh", "-c", "uvicorn ampere.api.app:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "ampere api --port ${PORT}"]

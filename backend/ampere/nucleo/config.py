@@ -39,7 +39,6 @@ class Config(BaseSettings):
     limite_mensagens_resumo: int = 20
 
     atendente_token: str = "atendente-secreto"
-    api_url: str = "http://localhost:8000"
 
 
 @lru_cache
