@@ -13,6 +13,9 @@ Regras que nunca podem ser quebradas:
 Instruções específicas para este Cliente (Memória Procedural, definida pelo Atendente):
 {{memoria_procedural}}
 
+O que já sabemos sobre este Cliente (Memória Semântica e Episódica):
+{{memorias}}
+
 Trechos da Base de Conhecimento:
 {{contexto}}
 

@@ -166,3 +166,13 @@ def test_embed_falso_aproxima_textos_com_palavras_em_comum():
     perto, longe, alvo = embed_falso(["troca de notebook", "frete para o sul", "notebook quebrou"])
 
     assert cosseno(alvo, perto) > cosseno(alvo, longe)
+
+
+def test_jev_falso_aceita_sequencia_de_probabilidades_por_pergunta():
+    jev = JevFalso(sequencias={"escopo": [0.9, 0.1]})
+
+    primeira = jev.perguntar("a", PERGUNTAS).nouls["escopo"].probabilidade
+    segunda = jev.perguntar("b", PERGUNTAS).nouls["escopo"].probabilidade
+    terceira = jev.perguntar("c", PERGUNTAS).nouls["escopo"].probabilidade
+
+    assert (primeira, segunda, terceira) == (0.9, 0.1, 0.1)

@@ -37,10 +37,17 @@ class ModeloFalso(BaseChatModel):
         return "modelo-falso"
 
     def _proxima(self, tipo: type | None = None) -> Any:
-        candidatos = self.respostas[self._posicao :] or self.respostas[-1:]
-        for deslocamento, resposta in enumerate(candidatos):
+        """Consome a primeira resposta pendente do tipo pedido; esgotadas, repete a última."""
+        pendentes = self.respostas[self._posicao :]
+        for deslocamento, resposta in enumerate(pendentes):
             if tipo is None or isinstance(resposta, tipo):
-                self._posicao = min(self._posicao + deslocamento + 1, len(self.respostas))
+                if len(pendentes) > 1:
+                    del self.respostas[self._posicao + deslocamento]
+                    self.respostas.insert(self._posicao, resposta)
+                    self._posicao += 1
+                return resposta
+        for resposta in reversed(self.respostas[: self._posicao]):
+            if tipo is None or isinstance(resposta, tipo):
                 return resposta
         raise AssertionError(f"ModeloFalso sem resposta do tipo {tipo}")
 
@@ -110,17 +117,26 @@ class JevFalso:
         self,
         nouls: dict[str, float] | None = None,
         choices: dict[str, str] | None = None,
+        sequencias: dict[str, list[float]] | None = None,
     ) -> None:
         self.nouls = dict(nouls or {})
         self.choices = dict(choices or {})
+        self.sequencias = {nome: list(valores) for nome, valores in (sequencias or {}).items()}
         self.chamadas: list[tuple[Estado, Perguntas]] = []
+
+    def _probabilidade(self, nome: str) -> float:
+        """Sequência por pergunta (a última se repete) tem precedência sobre o valor fixo."""
+        sequencia = self.sequencias.get(nome)
+        if sequencia:
+            return sequencia.pop(0) if len(sequencia) > 1 else sequencia[0]
+        return self.nouls.get(nome, 0.0)
 
     def perguntar(self, estado: Estado, perguntas: Perguntas) -> RespostasJev:
         self.chamadas.append((estado, perguntas))
         respostas = RespostasJev()
         for nome, pergunta in perguntas.items():
             if isinstance(pergunta, Noul):
-                respostas.nouls[nome] = RespostaNoul(self.nouls.get(nome, 0.0))
+                respostas.nouls[nome] = RespostaNoul(self._probabilidade(nome))
             elif isinstance(pergunta, Choice):
                 opcoes = list(pergunta.criteria)
                 escolha = self.choices.get(nome, opcoes[0])

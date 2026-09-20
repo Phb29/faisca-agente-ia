@@ -1,0 +1,170 @@
+"""SSE de ponta a ponta: um worker de teste publica por NOTIFY, a API escuta por LISTEN
+e o front recebe os cinco eventos; a reconexão devolve a última mensagem gravada.
+
+O `ASGITransport` do httpx só devolve a resposta quando o app termina, o que nunca acontece
+num stream aberto; por isso o teste sobe um uvicorn de verdade numa thread.
+"""
+
+import asyncio
+import json
+import socket
+import threading
+from collections.abc import AsyncIterator
+
+import httpx
+import pytest
+import uvicorn
+
+from ampere.api.app import criar_app
+from ampere.fila.eventos import Evento
+from ampere.fila.executor import ExecutorFalso
+from ampere.fila.worker import processar_um_job
+from ampere.nucleo.config import Config
+
+pytestmark = pytest.mark.integracao
+
+CLIENTE = {"X-Cliente-Id": "c1"}
+
+
+def _porta_livre() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+@pytest.fixture
+def servidor(banco):
+    app = criar_app(Config(database_url=banco, modelos_falsos=True), verificar_qdrant=lambda: True)
+    porta = _porta_livre()
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=porta, log_level="warning"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    for _ in range(100):
+        if server.started:
+            break
+        threading.Event().wait(0.05)
+    assert server.started, "uvicorn não subiu"
+    yield f"http://127.0.0.1:{porta}"
+    server.should_exit = True
+    thread.join(timeout=5)
+
+
+async def _eventos_sse(resposta: httpx.Response) -> AsyncIterator[tuple[str, dict]]:
+    tipo, dados = None, []
+    async for linha in resposta.aiter_lines():
+        if linha.startswith(":"):
+            continue
+        if linha.startswith("event:"):
+            tipo = linha[6:].strip()
+        elif linha.startswith("data:"):
+            dados.append(linha[5:].strip())
+        elif linha == "" and tipo:
+            yield tipo, json.loads("\n".join(dados))
+            tipo, dados = None, []
+
+
+async def _coletar(resposta: httpx.Response, quantos: int) -> list[tuple[str, dict]]:
+    recebidos = []
+    async for tipo, dados in _eventos_sse(resposta):
+        recebidos.append((tipo, dados))
+        if len(recebidos) == quantos:
+            break
+    return recebidos
+
+
+EVENTOS_DO_PRIMEIRO_JOB = [
+    Evento(tipo="token", dados={"texto": "Olá"}),
+    Evento(tipo="tool_call", dados={"nome": "consultar_pedido", "args": {"pedido_id": "P-1"}}),
+    Evento(
+        tipo="approval_required",
+        dados={"pedido_id": "P-1", "valor": 450.0, "probabilidade": 0.9, "resumo": "Acima"},
+    ),
+    Evento(tipo="message_done", dados={"conteudo": "Olá, seu reembolso aguarda aprovação."}),
+]
+
+
+def _executor_de_teste() -> ExecutorFalso:
+    def eventos(job):
+        if job.message_id == "m-2":
+            raise RuntimeError("falha simulada")
+        return EVENTOS_DO_PRIMEIRO_JOB
+
+    return ExecutorFalso(eventos)
+
+
+async def test_sse_recebe_os_cinco_eventos_na_ordem_e_reenvia_ao_reconectar(servidor, banco):
+    async with httpx.AsyncClient(base_url=servidor, timeout=10) as client:
+        criada = await client.post("/conversas", headers=CLIENTE, json={})
+        conversa_id = criada.json()["id"]
+        for message_id in ("m-1", "m-2"):
+            resp = await client.post(
+                f"/conversas/{conversa_id}/mensagens",
+                headers=CLIENTE,
+                json={"message_id": message_id, "conteudo": "quero reembolso"},
+            )
+            assert resp.status_code == 202
+
+        async with client.stream("GET", f"/conversas/{conversa_id}/stream", headers=CLIENTE) as r:
+            assert r.status_code == 200
+            assert r.headers["content-type"].startswith("text/event-stream")
+
+            def worker():
+                executor = _executor_de_teste()
+                assert processar_um_job(banco, executor) is True
+                assert processar_um_job(banco, executor) is True
+
+            thread = threading.Thread(target=worker)
+            thread.start()
+            recebidos = await asyncio.wait_for(_coletar(r, 5), timeout=10)
+            thread.join(timeout=5)
+
+        tipos = [t for t, _ in recebidos]
+        assert tipos == ["token", "tool_call", "approval_required", "message_done", "error"]
+        assert recebidos[0][1] == {"texto": "Olá"}
+        assert recebidos[1][1]["nome"] == "consultar_pedido"
+        assert "aprovacao_id" in recebidos[2][1]
+        assert recebidos[3][1]["conteudo"] == "Olá, seu reembolso aguarda aprovação."
+        assert recebidos[3][1]["mensagem_id"]
+        assert "reenvio" not in recebidos[3][1]
+        assert "falha simulada" in recebidos[4][1]["mensagem"]
+
+        # Reconexão: a última mensagem gravada do assistente volta como message_done.
+        async with client.stream("GET", f"/conversas/{conversa_id}/stream", headers=CLIENTE) as r:
+            reenviados = await asyncio.wait_for(_coletar(r, 1), timeout=10)
+        assert reenviados[0][0] == "message_done"
+        assert reenviados[0][1]["reenvio"] is True
+        assert reenviados[0][1]["mensagem_id"] == recebidos[3][1]["mensagem_id"]
+        assert reenviados[0][1]["conteudo"] == "Olá, seu reembolso aguarda aprovação."
+
+        # Conversa de outro Cliente não pode ser escutada.
+        outro = await client.get(f"/conversas/{conversa_id}/stream", headers={"X-Cliente-Id": "c2"})
+        assert outro.status_code == 404
+
+
+async def test_sse_aceita_cliente_id_por_query_string(servidor, banco):
+    """O EventSource do navegador não envia headers; a query string faz as vezes dele."""
+    async with httpx.AsyncClient(base_url=servidor, timeout=10) as client:
+        criada = await client.post("/conversas", headers=CLIENTE, json={})
+        conversa_id = criada.json()["id"]
+        resp = await client.post(
+            f"/conversas/{conversa_id}/mensagens",
+            headers=CLIENTE,
+            json={"message_id": "m-1", "conteudo": "oi"},
+        )
+        assert resp.status_code == 202
+
+        rota = f"/conversas/{conversa_id}/stream?cliente_id=c1"
+        async with client.stream("GET", rota) as r:
+            assert r.status_code == 200
+            executor = ExecutorFalso([Evento(tipo="message_done", dados={"conteudo": "olá"})])
+            thread = threading.Thread(target=processar_um_job, args=(banco, executor))
+            thread.start()
+            recebidos = await asyncio.wait_for(_coletar(r, 1), timeout=10)
+            thread.join(timeout=5)
+        assert recebidos[0][0] == "message_done"
+        assert recebidos[0][1]["conteudo"] == "olá"
+
+        sem_nada = await client.get(f"/conversas/{conversa_id}/stream")
+        assert sem_nada.status_code == 400
+        outro = await client.get(f"/conversas/{conversa_id}/stream?cliente_id=c2")
+        assert outro.status_code == 404
