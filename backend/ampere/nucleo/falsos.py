@@ -127,3 +127,24 @@ class JevFalso:
                 probabilidades = {o: (1.0 if o == escolha else 0.0) for o in opcoes}
                 respostas.choices[nome] = RespostaChoice(escolha, 1.0, probabilidades)
         return respostas
+
+
+def embed_falso(textos: list[str]) -> list[list[float]]:
+    """Vetor de 384 dimensões por bag-of-words hasheado: determinístico e sem modelo."""
+    import hashlib
+    import math
+    import re
+
+    vetores = []
+    for texto in textos:
+        vetor = [0.0] * 384
+        for palavra in re.findall(r"\w+", texto.lower()):
+            indice = int(hashlib.md5(palavra.encode()).hexdigest(), 16) % 384
+            vetor[indice] += 1.0
+        norma = math.sqrt(sum(v * v for v in vetor)) or 1.0
+        vetores.append([v / norma for v in vetor])
+    return vetores
+
+
+def cosseno(a: list[float], b: list[float]) -> float:
+    return sum(x * y for x, y in zip(a, b, strict=True))

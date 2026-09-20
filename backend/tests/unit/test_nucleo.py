@@ -149,3 +149,20 @@ def test_fabrica_real_nomeia_tres_papeis_com_custo():
     assert fabrica.gerador().model_name == config.modelo_gerador
     assert fabrica.juiz().model_name == config.modelo_juiz
     assert fabrica.trabalhador().model_name == config.modelo_trabalhador
+
+
+def test_embed_falso_e_deterministico_com_384_dimensoes():
+    from ampere.nucleo.falsos import embed_falso
+
+    [a], [b] = embed_falso(["notebook com defeito"]), embed_falso(["notebook com defeito"])
+
+    assert len(a) == 384
+    assert a == b
+
+
+def test_embed_falso_aproxima_textos_com_palavras_em_comum():
+    from ampere.nucleo.falsos import cosseno, embed_falso
+
+    perto, longe, alvo = embed_falso(["troca de notebook", "frete para o sul", "notebook quebrou"])
+
+    assert cosseno(alvo, perto) > cosseno(alvo, longe)
