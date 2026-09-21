@@ -69,7 +69,7 @@ class ExecutorDoGrafo:
     def executar(self, job: Job) -> Iterator[Evento]:
         from contextlib import ExitStack, nullcontext
 
-        from langchain_core.messages import AIMessage, AIMessageChunk
+        from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 
         cliente_id = job.payload.get("cliente_id", "")
         config: dict = {"configurable": {"thread_id": job.conversa_id, "cliente_id": cliente_id}}
@@ -124,13 +124,19 @@ class ExecutorDoGrafo:
         ultima = next(
             (m for m in reversed(estado.get("messages", [])) if isinstance(m, AIMessage)), None
         )
-        yield Evento(
-            tipo="message_done",
-            dados={
-                "conteudo": str(ultima.content) if ultima else "",
-                "desfecho": estado.get("desfecho"),
-            },
-        )
+        dados = {
+            "conteudo": str(ultima.content) if ultima else "",
+            "desfecho": estado.get("desfecho"),
+        }
+        if estado.get("mensagem_sensivel"):
+            # o Guardrail de entrada mascarou a mensagem no estado; o transcript segue igual
+            mascarada = next(
+                (m for m in reversed(estado.get("messages", [])) if isinstance(m, HumanMessage)),
+                None,
+            )
+            if mascarada is not None:
+                dados["mensagem_do_cliente_mascarada"] = str(mascarada.content)
+        yield Evento(tipo="message_done", dados=dados)
 
 
 def _tag_do_no(no: str, atualizacao) -> str | None:

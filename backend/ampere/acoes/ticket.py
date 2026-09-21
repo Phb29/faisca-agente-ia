@@ -6,10 +6,11 @@ from typing import Literal, Protocol
 from uuid import uuid4
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel
 
 from ampere.grafo.prompts import carregar_prompt
+from ampere.nucleo.mensagens import formatar_conversa
 
 Categoria = Literal[
     "troca", "devolucao", "frete", "garantia", "pagamento", "cadastro", "reembolso", "outro"
@@ -98,16 +99,6 @@ class StoreDeTicketsPostgres:
         ]
 
 
-def formatar_conversa(messages: list[BaseMessage]) -> str:
-    linhas = []
-    for mensagem in messages:
-        if isinstance(mensagem, HumanMessage):
-            linhas.append(f"Cliente: {mensagem.content}")
-        elif isinstance(mensagem, AIMessage) and mensagem.content:
-            linhas.append(f"Assistente: {mensagem.content}")
-    return "\n".join(linhas)
-
-
 def abrir_ticket(
     trabalhador: BaseChatModel,
     tickets: StoreDeTickets,
@@ -121,6 +112,7 @@ def abrir_ticket(
         [
             SystemMessage(prompt.renderizar(conversa=formatar_conversa(messages))),
             HumanMessage("Resuma esta Conversa para o Ticket."),
-        ]
+        ],
+        config={"metadata": prompt.metadata()},
     )
     return tickets.criar(conversa_id, cliente_id, resumo)

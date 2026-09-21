@@ -19,7 +19,7 @@ from ampere.evals.juiz import Veredito, julgar_fidelidade, julgar_relevancia
 from ampere.evals.metricas import mrr, recall_at_k
 from ampere.grafo.prompts import carregar_prompt
 from ampere.nucleo.config import Config
-from ampere.rag.busca import Retriever
+from ampere.rag.busca import Retriever, formatar_chunks
 from ampere.rag.chunkers import Chunk
 
 PASTA_DADOS = Path(__file__).parent / "dados"
@@ -110,17 +110,13 @@ class ResultadoGeracao:
     vereditos: list[VereditoDaGeracao] = field(default_factory=list)
 
 
-def formatar_contexto(chunks: Sequence[Chunk]) -> str:
-    return "\n\n".join(f"[{c.documento}] {c.texto}" for c in chunks) or "(nenhum trecho encontrado)"
-
-
 def gerar_resposta(gerador: BaseChatModel, pergunta: str, chunks: Sequence[Chunk]) -> str:
     """Mesmo prompt `gerar_resposta` do grafo, sem memórias: mede só RAG + gerador."""
     prompt = carregar_prompt("gerar_resposta")
     sistema = prompt.renderizar(
         memoria_procedural="(nenhuma)",
         memorias="(nada registrado)",
-        contexto=formatar_contexto(chunks),
+        contexto=formatar_chunks(chunks),
         critica="",
     )
     resposta = gerador.invoke(

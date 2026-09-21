@@ -84,7 +84,7 @@ export function AprovacoesPendentes({ token, aoErro }: Props) {
 
       {retomadas.length > 0 && (
         <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-          Conversa retomada. O Cliente receberá a resposta no chat.
+          Conversa retomada. O Cliente receberá a resposta na própria Conversa.
         </p>
       )}
 

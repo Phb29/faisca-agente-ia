@@ -15,7 +15,8 @@ class SelfQuerying:
     def gerar_filtro(self, pergunta: str) -> FiltroDeBusca:
         sistema = self.prompt.renderizar(pergunta=pergunta)
         resposta = self.trabalhador.with_structured_output(FiltroDeBusca).invoke(
-            [SystemMessage(content=sistema), HumanMessage(content=pergunta)]
+            [SystemMessage(content=sistema), HumanMessage(content=pergunta)],
+            config={"metadata": self.prompt.metadata()},
         )
         if isinstance(resposta, FiltroDeBusca):
             return resposta

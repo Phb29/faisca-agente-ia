@@ -38,8 +38,8 @@ class Prompt:
 
 
 @lru_cache
-def carregar_prompt(nome: str) -> Prompt:
-    caminho = PASTA / f"{nome}.md"
+def carregar_prompt(nome: str, pasta: Path = PASTA) -> Prompt:
+    caminho = pasta / f"{nome}.md"
     if not caminho.exists():
         raise FileNotFoundError(f"Prompt não encontrado: {caminho}")
     post = frontmatter.load(caminho)

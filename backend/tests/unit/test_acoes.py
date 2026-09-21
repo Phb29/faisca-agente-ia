@@ -6,10 +6,11 @@ from decimal import Decimal
 from langchain_core.messages import AIMessage, HumanMessage
 
 from ampere.acoes.pedidos import Pedido, Reembolso, StoreDePedidosEmMemoria
-from ampere.acoes.reembolso import DecisaoDoGate, avaliar_gate
+from ampere.acoes.reembolso import avaliar_gate
 from ampere.acoes.ticket import ResumoDoTicket, StoreDeTicketsEmMemoria, abrir_ticket
 from ampere.nucleo.falsos import JevFalso, ModeloFalso
 
+JANELA = {"janela_dias": 30, "limiar": 0.5}
 PEDIDOS = [
     Pedido(
         id="P1",
@@ -59,22 +60,26 @@ def test_store_de_pedidos_registra_reembolso_e_lista_os_recentes():
     assert recentes[0].valor == Decimal("199.90")
 
 
-def test_gate_valor_acima_do_limite_exige_aprovacao_sem_consultar_jev():
-    jev = JevFalso(nouls={"exige_aprovacao": 0.0})
+def test_gate_valor_acima_do_limite_exige_aprovacao_mas_ainda_consulta_o_jev():
+    jev = JevFalso(nouls={"exige_aprovacao": 0.3})
 
     decisao = avaliar_gate(
-        jev, valor=Decimal("500"), valor_limite=300.0, reembolsos_recentes=0, limiar=0.5
+        jev, valor=Decimal("500"), valor_limite=300.0, reembolsos_recentes=0, **JANELA
     )
 
-    assert decisao == DecisaoDoGate(
-        exige_aprovacao=True, probabilidade=1.0, motivo="valor_acima_do_limite"
+    assert (decisao.exige_aprovacao, decisao.probabilidade, decisao.motivo) == (
+        True,
+        0.3,
+        "valor_acima_do_limite",
     )
-    assert jev.chamadas == []
+    estado, _ = jev.chamadas[0]
+    assert estado["valor_acima_do_limite"] is True
+    assert estado["reembolsos_nos_ultimos_30_dias"] == 0
 
 
 def test_gate_reembolso_recente_exige_aprovacao():
     decisao = avaliar_gate(
-        JevFalso(), valor=Decimal("50"), valor_limite=300.0, reembolsos_recentes=1, limiar=0.5
+        JevFalso(), valor=Decimal("50"), valor_limite=300.0, reembolsos_recentes=1, **JANELA
     )
 
     assert decisao.exige_aprovacao is True
@@ -85,7 +90,7 @@ def test_gate_abaixo_do_limite_pergunta_ao_jev_e_respeita_limiar():
     jev = JevFalso(nouls={"exige_aprovacao": 0.5})
 
     decisao = avaliar_gate(
-        jev, valor=Decimal("120"), valor_limite=300.0, reembolsos_recentes=0, limiar=0.5
+        jev, valor=Decimal("120"), valor_limite=300.0, reembolsos_recentes=0, **JANELA
     )
 
     assert decisao.exige_aprovacao is True
@@ -102,11 +107,12 @@ def test_gate_abaixo_do_limiar_libera_automaticamente():
         valor=Decimal("120"),
         valor_limite=300.0,
         reembolsos_recentes=0,
-        limiar=0.5,
+        **JANELA,
     )
 
     assert decisao.exige_aprovacao is False
     assert decisao.probabilidade == 0.2
+    assert decisao.motivo == "automatico"
 
 
 def test_abrir_ticket_usa_trabalhador_e_grava_no_store():

@@ -29,7 +29,7 @@ from ampere.nucleo.falsos import JevFalso, ModeloFalso, embed_falso
 from ampere.nucleo.modelos import FabricaDeModelos
 from ampere.observabilidade.langfuse import Observabilidade
 from ampere.rag.busca import RetrieverFalso
-from tests.grafo.test_grafo import CHUNK_GARANTIA, tool_call
+from tests.apoio import CHUNK_GARANTIA, tool_call
 
 pytestmark = pytest.mark.integracao
 
@@ -87,7 +87,7 @@ def test_mensagem_atravessa_fila_grafo_e_persistencia_do_langgraph(banco):
         mensagens = listar_mensagens(conn, conversa_id)
         assert [m["papel"] for m in mensagens] == ["cliente", "assistente"]
         assert mensagens[-1]["conteudo"] == "A garantia é de 12 meses."
-        assert obter_conversa(conn, conversa_id)["status"] == "aberta"
+        assert obter_conversa(conn, conversa_id)["status"] == "resolvida"
 
         # segundo turno: a memória do turno anterior veio do Store no Postgres (pgvector)
         assert enfileirar_mensagem(conn, conversa_id, str(uuid.uuid4()), "e o frete?", "cli_ana")
@@ -97,6 +97,26 @@ def test_mensagem_atravessa_fila_grafo_e_persistencia_do_langgraph(banco):
         ).values
         assert estado["memorias"]["semantica"] == ["Tem um notebook Vega 15"]
         assert len(estado["messages"]) == 4
+
+
+def test_dado_sensivel_e_mascarado_no_transcript_gravado(banco):
+    executor = _executor(
+        banco,
+        ["Posso ajudar."],
+        JevFalso(nouls={"dado_sensivel": 0.9}, choices={"intencao": "duvida"}),
+    )
+    with conectar(banco, autocommit=True) as conn:
+        _semear(conn)
+        conversa_id = criar_conversa(conn, "cli_ana")
+        enfileirar_mensagem(
+            conn, conversa_id, "m-cartao", "meu cartão é 4111 1111 1111 1111", "cli_ana"
+        )
+
+        processar_um_job(banco, executor)
+
+        conteudo = listar_mensagens(conn, conversa_id)[0]["conteudo"]
+        assert "4111" not in conteudo
+        assert "[CARTÃO MASCARADO]" in conteudo
 
 
 def test_reembolso_com_aprovacao_pendente_e_retomada_pelo_atendente(banco):
@@ -124,4 +144,4 @@ def test_reembolso_com_aprovacao_pendente_e_retomada_pelo_atendente(banco):
 
         assert conn.execute("SELECT count(*) AS n FROM reembolsos").fetchone()["n"] == 1
         assert listar_mensagens(conn, conversa_id)[-1]["conteudo"] == "Aprovado!"
-        assert obter_conversa(conn, conversa_id)["status"] == "aberta"
+        assert obter_conversa(conn, conversa_id)["status"] == "resolvida"

@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from ampere.api import atendente, cliente, sse
 from ampere.api.atendente import MemoriaProcedural
 from ampere.nucleo.banco import conectar
-from ampere.nucleo.config import Config, config
+from ampere.nucleo.config import Config
 
 
 def _postgres_responde(config: Config) -> bool:
@@ -62,6 +62,3 @@ def criar_app(
     app.include_router(sse.router)
     app.include_router(atendente.router)
     return app
-
-
-app = criar_app(config())

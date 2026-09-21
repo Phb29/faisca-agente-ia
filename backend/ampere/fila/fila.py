@@ -18,7 +18,7 @@ class Job:
     payload: dict
 
 
-def _texto(linha: dict[str, Any] | None) -> dict[str, Any] | None:
+def _uuid_como_texto(linha: dict[str, Any] | None) -> dict[str, Any] | None:
     """Converte uuids em str para o resto do sistema não depender do tipo do psycopg."""
     if linha is None:
         return None
@@ -40,11 +40,13 @@ def listar_conversas(conn: psycopg.Connection, cliente_id: str) -> list[dict]:
     linhas = conn.execute(
         "SELECT * FROM conversas WHERE cliente_id = %s ORDER BY criada_em DESC", (cliente_id,)
     ).fetchall()
-    return [_texto(linha) for linha in linhas]
+    return [_uuid_como_texto(linha) for linha in linhas]
 
 
 def obter_conversa(conn: psycopg.Connection, conversa_id: str) -> dict | None:
-    return _texto(conn.execute("SELECT * FROM conversas WHERE id = %s", (conversa_id,)).fetchone())
+    return _uuid_como_texto(
+        conn.execute("SELECT * FROM conversas WHERE id = %s", (conversa_id,)).fetchone()
+    )
 
 
 def atualizar_status_conversa(conn: psycopg.Connection, conversa_id: str, status: str) -> None:
@@ -75,15 +77,22 @@ def gravar_mensagem(
     return str(linha["id"])
 
 
+def substituir_conteudo_da_mensagem(
+    conn: psycopg.Connection, message_id: str, conteudo: str
+) -> None:
+    """Troca o texto gravado de uma mensagem do Cliente (mascaramento de dado sensível)."""
+    conn.execute("UPDATE mensagens SET conteudo = %s WHERE message_id = %s", (conteudo, message_id))
+
+
 def listar_mensagens(conn: psycopg.Connection, conversa_id: str) -> list[dict]:
     linhas = conn.execute(
         "SELECT * FROM mensagens WHERE conversa_id = %s ORDER BY criada_em, id", (conversa_id,)
     ).fetchall()
-    return [_texto(linha) for linha in linhas]
+    return [_uuid_como_texto(linha) for linha in linhas]
 
 
 def ultima_mensagem_do_assistente(conn: psycopg.Connection, conversa_id: str) -> dict | None:
-    return _texto(
+    return _uuid_como_texto(
         conn.execute(
             "SELECT * FROM mensagens WHERE conversa_id = %s AND papel = 'assistente' "
             "ORDER BY criada_em DESC, id DESC LIMIT 1",
@@ -113,7 +122,10 @@ def enfileirar_mensagem(
             "VALUES ('mensagem', %s, %s, %s) ON CONFLICT (message_id) DO NOTHING RETURNING id",
             (conversa_id, message_id, Jsonb({"conteudo": conteudo, "cliente_id": cliente_id})),
         ).fetchone()
-        conn.execute("UPDATE conversas SET atualizada_em = now() WHERE id = %s", (conversa_id,))
+        conn.execute(
+            "UPDATE conversas SET status = 'aberta', atualizada_em = now() WHERE id = %s",
+            (conversa_id,),
+        )
         return job is not None
 
 
@@ -196,11 +208,11 @@ def listar_aprovacoes_pendentes(conn: psycopg.Connection) -> list[dict]:
     linhas = conn.execute(
         "SELECT * FROM aprovacoes_pendentes WHERE status = 'pendente' ORDER BY criada_em"
     ).fetchall()
-    return [_texto(linha) for linha in linhas]
+    return [_uuid_como_texto(linha) for linha in linhas]
 
 
 def obter_aprovacao(conn: psycopg.Connection, aprovacao_id: str) -> dict | None:
-    return _texto(
+    return _uuid_como_texto(
         conn.execute("SELECT * FROM aprovacoes_pendentes WHERE id = %s", (aprovacao_id,)).fetchone()
     )
 
@@ -209,7 +221,7 @@ def decidir_aprovacao(
     conn: psycopg.Connection, aprovacao_id: str, aprovada: bool, motivo: str | None = None
 ) -> dict | None:
     """Marca a decisão só se ainda estiver pendente; devolve a linha atualizada ou None."""
-    return _texto(
+    return _uuid_como_texto(
         conn.execute(
             "UPDATE aprovacoes_pendentes SET status = %s, motivo = %s, decidida_em = now() "
             "WHERE id = %s AND status = 'pendente' RETURNING *",
@@ -239,13 +251,15 @@ def criar_ticket(
 
 def listar_tickets(conn: psycopg.Connection) -> list[dict]:
     linhas = conn.execute("SELECT * FROM tickets ORDER BY criado_em DESC").fetchall()
-    return [_texto(linha) for linha in linhas]
+    return [_uuid_como_texto(linha) for linha in linhas]
 
 
 def obter_ticket(conn: psycopg.Connection, ticket_id: str) -> dict | None:
-    return _texto(conn.execute("SELECT * FROM tickets WHERE id = %s", (ticket_id,)).fetchone())
+    return _uuid_como_texto(
+        conn.execute("SELECT * FROM tickets WHERE id = %s", (ticket_id,)).fetchone()
+    )
 
 
 def listar_clientes(conn: psycopg.Connection) -> list[dict]:
     linhas = conn.execute("SELECT * FROM clientes ORDER BY nome").fetchall()
-    return [_texto(linha) for linha in linhas]
+    return [_uuid_como_texto(linha) for linha in linhas]

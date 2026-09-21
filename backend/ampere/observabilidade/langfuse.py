@@ -8,7 +8,7 @@ from contextlib import contextmanager, nullcontext
 from typing import Any
 
 from ampere.nucleo.config import Config
-from ampere.nucleo.jev import Estado, RespostasJev
+from ampere.nucleo.jev import EstadoDoJev, RespostasJev
 
 
 class Observabilidade:
@@ -59,7 +59,7 @@ class Observabilidade:
     def registrar_jev(
         self,
         nome: str,
-        estado: Estado,
+        estado: EstadoDoJev,
         respostas: RespostasJev,
         *,
         metadata: dict[str, Any] | None = None,

@@ -32,7 +32,7 @@ dependencies = [
 
 [project.scripts]
 ampere = "ampere.cli:app"
-ampere-evals = "ampere.evals.cli:app"
+ampere-evals = "ampere.cli:evals"
 
 [dependency-groups]
 dev = [

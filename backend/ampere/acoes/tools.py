@@ -19,7 +19,8 @@ from ampere.acoes.reembolso import avaliar_gate
 from ampere.acoes.ticket import StoreDeTickets, abrir_ticket
 from ampere.nucleo.config import Config
 from ampere.nucleo.modelos import FabricaDeModelos
-from ampere.rag.busca import Retriever
+from ampere.observabilidade.langfuse import Observabilidade
+from ampere.rag.busca import Retriever, formatar_chunks
 
 NOMES_DAS_ACOES = (
     "consultar_pedido",
@@ -58,6 +59,7 @@ def criar_tools(
     pedidos: StoreDePedidos,
     tickets: StoreDeTickets,
     turno: ContextoDoTurno,
+    observabilidade: Observabilidade | None = None,
 ) -> list[BaseTool]:
     @tool
     def consultar_pedido(pedido_id: str) -> str:
@@ -79,7 +81,7 @@ def criar_tools(
         turno.contexto.extend(chunk.model_dump() for chunk in chunks)
         if not chunks:
             return "Nenhuma política encontrada para essa pergunta."
-        return "\n\n".join(f"[{c.documento}] {c.texto}" for c in chunks)
+        return formatar_chunks(chunks)
 
     @tool
     def emitir_reembolso(pedido_id: str, motivo: str) -> str:
@@ -89,14 +91,24 @@ def criar_tools(
         pedido = pedidos.obter(turno.cliente_id, pedido_id)
         if pedido is None:
             return f"Pedido {pedido_id} não encontrado entre os Pedidos deste Cliente."
-        recentes = pedidos.reembolsos_recentes(turno.cliente_id)
+        recentes = pedidos.reembolsos_recentes(
+            turno.cliente_id, dias=config.janela_reembolso_recente_dias
+        )
         decisao = avaliar_gate(
             fabrica.jev(),
             valor=pedido.valor,
             valor_limite=config.valor_limite_reembolso,
             reembolsos_recentes=len(recentes),
+            janela_dias=config.janela_reembolso_recente_dias,
             limiar=config.limiar_gate_aprovacao,
         )
+        if observabilidade is not None:
+            observabilidade.registrar_jev(
+                "gate_de_aprovacao",
+                {"pedido_id": pedido.id, "valor": float(pedido.valor)},
+                decisao.respostas,
+                metadata={"limiar": config.limiar_gate_aprovacao, "motivo": decisao.motivo},
+            )
         if decisao.exige_aprovacao:
             resposta = interrupt(
                 {

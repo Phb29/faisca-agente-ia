@@ -17,7 +17,7 @@ from langchain_core.runnables import Runnable, RunnableLambda
 from pydantic import BaseModel, Field
 from typesafe_sdk import Choice, Noul
 
-from ampere.nucleo.jev import Estado, Perguntas, RespostaChoice, RespostaNoul, RespostasJev
+from ampere.nucleo.jev import EstadoDoJev, Perguntas, RespostaChoice, RespostaNoul, RespostasJev
 
 Resposta = AIMessage | str | BaseModel
 
@@ -124,7 +124,7 @@ class JevFalso:
         self.nouls = dict(nouls or {})
         self.choices = dict(choices or {})
         self.sequencias = {nome: list(valores) for nome, valores in (sequencias or {}).items()}
-        self.chamadas: list[tuple[Estado, Perguntas]] = []
+        self.chamadas: list[tuple[EstadoDoJev, Perguntas]] = []
 
     def _probabilidade(self, nome: str) -> float:
         """Sequência por pergunta (a última se repete) tem precedência sobre o valor fixo."""
@@ -133,7 +133,7 @@ class JevFalso:
             return sequencia.pop(0) if len(sequencia) > 1 else sequencia[0]
         return self.nouls.get(nome, 0.0)
 
-    def perguntar(self, estado: Estado, perguntas: Perguntas) -> RespostasJev:
+    def perguntar(self, estado: EstadoDoJev, perguntas: Perguntas) -> RespostasJev:
         self.chamadas.append((estado, perguntas))
         respostas = RespostasJev()
         for nome, pergunta in perguntas.items():

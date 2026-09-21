@@ -11,7 +11,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 from uuid import uuid4
 
 from langchain_core.messages import AIMessage
@@ -163,15 +163,12 @@ class ResultadoDoCenario:
 class ExecutorDeCenarios:
     """Monta as dependências reais uma vez e um grafo novo (memória limpa) por cenário."""
 
-    def __init__(self, config: Config) -> None:
-        from ampere.cli import montar_fabrica, montar_retriever
-        from ampere.observabilidade.langfuse import Observabilidade
+    def __init__(self, config: Config, composicao: "Composicao") -> None:
         from ampere.rag.embedders import criar_embedder
 
         self.config = config
-        self.fabrica = montar_fabrica(config)
-        self.retriever = montar_retriever(config, self.fabrica)
-        self.observabilidade = Observabilidade(config)
+        self.composicao = composicao
+        self.observabilidade = composicao.observabilidade
         self.embed = criar_embedder("minilm", config).embed
 
     def executar(self, cenario: Cenario) -> ResultadoDoCenario:
@@ -181,7 +178,6 @@ class ExecutorDeCenarios:
         from ampere.acoes.pedidos import Pedido, Reembolso, StoreDePedidosEmMemoria
         from ampere.acoes.ticket import StoreDeTicketsEmMemoria
         from ampere.fila.seed import PEDIDOS, REEMBOLSOS
-        from ampere.grafo.construtor import Dependencias, construir_grafo
         from ampere.memoria.salvar import escrever_procedural
         from ampere.memoria.store import criar_store_em_memoria, namespace_semantica
 
@@ -192,17 +188,11 @@ class ExecutorDeCenarios:
         if iniciais.procedural:
             escrever_procedural(store, cenario.cliente_id, iniciais.procedural)
 
-        grafo = construir_grafo(
-            Dependencias(
-                config=self.config,
-                fabrica=self.fabrica,
-                retriever=self.retriever,
-                pedidos=StoreDePedidosEmMemoria(
-                    [Pedido(**p) for p in PEDIDOS], [Reembolso(**r) for r in REEMBOLSOS]
-                ),
-                tickets=StoreDeTicketsEmMemoria(),
-                observabilidade=self.observabilidade,
+        grafo = self.composicao.construir_grafo(
+            pedidos=StoreDePedidosEmMemoria(
+                [Pedido(**p) for p in PEDIDOS], [Reembolso(**r) for r in REEMBOLSOS]
             ),
+            tickets=StoreDeTicketsEmMemoria(),
             checkpointer=InMemorySaver(),
             store=store,
         )
@@ -234,7 +224,18 @@ class ExecutorDeCenarios:
         return ResultadoDoCenario(cenario, comparacao, resposta, veredito)
 
 
-def rodar(config: Config, *, amostra: int | None = None) -> list[dict]:
+class Composicao(Protocol):
+    """O que a raiz de composição (`ampere.cli`) entrega ao eval: o grafo real montado com
+    os modelos e o retriever de produção, sem este módulo importar de `ampere.grafo`."""
+
+    observabilidade: Any
+
+    def construir_grafo(
+        self, *, pedidos: Any, tickets: Any, checkpointer: Any, store: Any
+    ) -> Any: ...
+
+
+def rodar(config: Config, composicao: Composicao, *, amostra: int | None = None) -> list[dict]:
     from rich.console import Console
     from rich.table import Table
 
@@ -242,7 +243,7 @@ def rodar(config: Config, *, amostra: int | None = None) -> list[dict]:
 
     console = Console()
     cenarios = carregar_golden_agente()[:amostra]
-    executor = ExecutorDeCenarios(config)
+    executor = ExecutorDeCenarios(config, composicao)
     resultados: list[ResultadoDoCenario] = []
     for cenario in cenarios:
         console.print(f"[dim]{cenario.id}: {cenario.mensagem[:70]}")

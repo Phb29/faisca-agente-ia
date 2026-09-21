@@ -35,6 +35,7 @@ class Config(BaseSettings):
     limiar_guardrail_saida: float = 0.7
     limiar_gate_aprovacao: float = 0.5
     valor_limite_reembolso: float = 300.0
+    janela_reembolso_recente_dias: int = 30
 
     limite_mensagens_resumo: int = 20
 

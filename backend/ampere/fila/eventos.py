@@ -31,13 +31,37 @@ def publicar(conn: psycopg.Connection, conversa_id: str, evento: Evento) -> None
     conn.execute("SELECT pg_notify(%s, %s)", (canal(conversa_id), evento.model_dump_json()))
 
 
-async def escutar(conn_string: str, conversa_id: str) -> AsyncIterator[Evento]:
-    """Abre uma conexão assíncrona só para o LISTEN e produz um Evento por notificação.
-    Fechar o gerador (`aclose`) encerra a conexão."""
-    conn = await conectar_async(conn_string, autocommit=True)
-    try:
-        await conn.execute(f"LISTEN {canal(conversa_id)}")
-        async for notificacao in conn.notifies():
+class Escuta:
+    """Um LISTEN no canal da Conversa. `abrir` executa o LISTEN antes de qualquer consumo,
+    para quem precisa garantir que nenhum evento se perca entre a resposta e o primeiro
+    `async for` (o SSE); `fechar` encerra a conexão."""
+
+    def __init__(self, conn_string: str, conversa_id: str) -> None:
+        self._conn_string = conn_string
+        self._canal = canal(conversa_id)
+        self._conn: psycopg.AsyncConnection | None = None
+
+    async def abrir(self) -> "Escuta":
+        self._conn = await conectar_async(self._conn_string, autocommit=True)
+        await self._conn.execute(f"LISTEN {self._canal}")
+        return self
+
+    async def __aiter__(self) -> AsyncIterator[Evento]:
+        assert self._conn is not None, "chame abrir() antes de iterar"
+        async for notificacao in self._conn.notifies():
             yield Evento.model_validate_json(notificacao.payload)
+
+    async def fechar(self) -> None:
+        if self._conn is not None:
+            await self._conn.close()
+            self._conn = None
+
+
+async def escutar(conn_string: str, conversa_id: str) -> AsyncIterator[Evento]:
+    """Forma curta: abre, produz um Evento por notificação e fecha ao ser encerrado."""
+    escuta = await Escuta(conn_string, conversa_id).abrir()
+    try:
+        async for evento in escuta:
+            yield evento
     finally:
-        await conn.close()
+        await escuta.fechar()

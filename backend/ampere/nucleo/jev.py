@@ -12,7 +12,7 @@ from typing import Protocol
 from typesafe_sdk import Choice, Noul, SystemOneResponse, TypeSafeClient
 
 Perguntas = Mapping[str, Noul | Choice]
-Estado = str | dict | list
+EstadoDoJev = str | dict | list
 
 
 @dataclass(frozen=True)
@@ -52,7 +52,7 @@ class RespostasJev:
 
 
 class ClienteJev(Protocol):
-    def perguntar(self, estado: Estado, perguntas: Perguntas) -> RespostasJev: ...
+    def perguntar(self, estado: EstadoDoJev, perguntas: Perguntas) -> RespostasJev: ...
 
 
 class JevReal:
@@ -63,6 +63,6 @@ class JevReal:
             raise ValueError("TYPESAFE_API_KEY ausente. Use MODELOS_FALSOS=true para rodar sem Jev")
         self._cliente = TypeSafeClient(api_key=api_key, model=modelo)
 
-    def perguntar(self, estado: Estado, perguntas: Perguntas) -> RespostasJev:
+    def perguntar(self, estado: EstadoDoJev, perguntas: Perguntas) -> RespostasJev:
         resposta = self._cliente.system_one(state=estado, questions=dict(perguntas))
         return RespostasJev.do_sdk(resposta)

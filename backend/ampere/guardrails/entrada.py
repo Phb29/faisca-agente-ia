@@ -5,13 +5,11 @@ sensível não bloqueia, só marca a mensagem para mascaramento antes de gravar 
 """
 
 from dataclasses import dataclass
-from typing import Literal
 
 from typesafe_sdk import Noul
 
-from ampere.nucleo.jev import ClienteJev
-
-Bloqueio = Literal["manipulacao", "fora_de_escopo"]
+from ampere.grafo.estado import Bloqueio
+from ampere.nucleo.jev import ClienteJev, RespostasJev
 
 CONTEXTO = (
     "chatbot de suporte de um e-commerce de eletrônicos (notebooks, celulares, acessórios): "
@@ -92,6 +90,7 @@ class ResultadoEntrada:
     bloqueio: Bloqueio | None
     sensivel: bool
     probabilidades: dict[str, float]
+    respostas: RespostasJev
 
 
 def avaliar_entrada(
@@ -116,4 +115,5 @@ def avaliar_entrada(
         bloqueio=bloqueio,
         sensivel=probabilidades["dado_sensivel"] >= limiar_sensivel,
         probabilidades=probabilidades,
+        respostas=respostas,
     )

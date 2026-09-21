@@ -10,9 +10,8 @@ from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from ampere.api.cliente import conversa_do_cliente
 from ampere.api.seguranca import ClienteId, Conexao, obter_config
-from ampere.fila.eventos import Evento, canal
+from ampere.fila.eventos import Escuta
 from ampere.fila.fila import ultima_mensagem_do_assistente
-from ampere.nucleo.banco import conectar_async
 
 router = APIRouter()
 
@@ -25,8 +24,7 @@ async def stream(request: Request, conn: Conexao, cliente_id: ClienteId, convers
 
     # O LISTEN é feito antes de responder: quando o front recebe os headers, nenhum
     # evento publicado dali em diante se perde.
-    escuta = await conectar_async(config.database_url, autocommit=True)
-    await escuta.execute(f"LISTEN {canal(conversa['id'])}")
+    escuta = await Escuta(config.database_url, conversa["id"]).abrir()
 
     async def eventos():
         try:
@@ -37,13 +35,12 @@ async def stream(request: Request, conn: Conexao, cliente_id: ClienteId, convers
                     "reenvio": True,
                 }
                 yield ServerSentEvent(event="message_done", data=json.dumps(dados))
-            async for notificacao in escuta.notifies():
-                evento = Evento.model_validate_json(notificacao.payload)
+            async for evento in escuta:
                 yield ServerSentEvent(event=evento.tipo, data=json.dumps(evento.dados))
         finally:
-            await escuta.close()
+            await escuta.fechar()
 
     async def ao_desconectar(_mensagem) -> None:
-        await escuta.close()
+        await escuta.fechar()
 
     return EventSourceResponse(eventos(), client_close_handler_callable=ao_desconectar)

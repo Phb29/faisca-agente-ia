@@ -10,6 +10,10 @@ import typer
 from ampere.nucleo.config import Config, config
 
 app = typer.Typer(help="Suporte Ampère: comandos de operação.", no_args_is_help=True)
+evals = typer.Typer(
+    help="Suporte Ampère: evals com modelos reais (fora do pytest).", no_args_is_help=True
+)
+app.add_typer(evals, name="evals")
 
 
 @app.command()
@@ -74,6 +78,65 @@ def worker(uma_vez: bool = typer.Option(False, "--uma-vez")) -> None:
 
     cfg = config()
     rodar_worker(cfg.database_url, montar_executor(cfg), uma_vez=uma_vez)
+
+
+@evals.command("rag")
+def evals_rag(
+    so_retrieval: bool = typer.Option(
+        False, "--so-retrieval", help="Só Recall@5 e MRR, sem gerador nem juiz."
+    ),
+    amostra: int = typer.Option(None, "--amostra", help="Usa só as N primeiras perguntas."),
+) -> None:
+    """Recall@5 e MRR por variante (embedder, chunker, reranker, self-querying) e juiz."""
+    from ampere.evals.rag import rodar
+
+    rodar(config(), so_retrieval=so_retrieval, amostra=amostra)
+
+
+@evals.command("agente")
+def evals_agente(
+    amostra: int = typer.Option(None, "--amostra", help="Usa só os N primeiros cenários."),
+) -> None:
+    """Um turno do grafo real por cenário: intenção, Ação e desfecho por código, mais o juiz."""
+    from ampere.evals.agente import rodar
+
+    cfg = config()
+    rodar(cfg, ComposicaoDosEvals(cfg), amostra=amostra)
+
+
+@evals.command("calibracao")
+def evals_calibracao(
+    seed: int = typer.Option(0, "--seed", help="Seed da divisão treino/dev/teste."),
+) -> None:
+    """Juiz contra rótulos humanos: TPR, TNR, matriz, desacordos e Rogan-Gladen com IC."""
+    from ampere.evals.calibracao import rodar
+
+    rodar(config(), seed=seed)
+
+
+class ComposicaoDosEvals:
+    """Entrega ao eval do agente o grafo real (modelos, Jev e retriever de produção)."""
+
+    def __init__(self, cfg: Config) -> None:
+        from ampere.observabilidade.langfuse import Observabilidade
+
+        self.cfg = cfg
+        self.fabrica = montar_fabrica(cfg)
+        self.retriever = montar_retriever(cfg, self.fabrica)
+        self.observabilidade = Observabilidade(cfg)
+
+    def construir_grafo(self, *, pedidos, tickets, checkpointer, store):
+        from ampere.grafo.construtor import Dependencias, construir_grafo
+
+        deps = Dependencias(
+            config=self.cfg,
+            fabrica=self.fabrica,
+            retriever=self.retriever,
+            pedidos=pedidos,
+            tickets=tickets,
+            observabilidade=self.observabilidade,
+        )
+        return construir_grafo(deps, checkpointer=checkpointer, store=store)
 
 
 def montar_fabrica(cfg: Config):

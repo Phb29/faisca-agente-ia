@@ -5,7 +5,7 @@ from langgraph.types import Command
 from ampere.fila.executor import ExecutorDoGrafo
 from ampere.fila.fila import Job
 from ampere.nucleo.falsos import JevFalso
-from tests.grafo.test_grafo import Cenario, tool_call
+from tests.apoio import Cenario, tool_call
 
 
 def job_de_mensagem(conteudo: str, conversa_id="conv-1") -> Job:

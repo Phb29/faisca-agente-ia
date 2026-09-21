@@ -31,9 +31,10 @@ from ampere.guardrails.saida import RESPOSTA_ESCALADA, avaliar_saida
 from ampere.memoria.carregar import carregar_memorias
 from ampere.memoria.salvar import salvar_memorias
 from ampere.nucleo.config import Config
+from ampere.nucleo.mensagens import formatar_conversa
 from ampere.nucleo.modelos import FabricaDeModelos
 from ampere.observabilidade.langfuse import Observabilidade
-from ampere.rag.busca import Retriever
+from ampere.rag.busca import Retriever, formatar_chunks
 from ampere.roteador.roteador import rotear
 
 RESPOSTA_TICKET_ABERTO = (
@@ -67,12 +68,6 @@ def formatar_memorias(memorias: Memorias) -> str:
             f"- Conversa anterior ({episodio.get('desfecho', '')}): {episodio.get('resumo', '')}"
         )
     return "\n".join(linhas) or "(nada registrado)"
-
-
-def formatar_contexto(contexto: list[dict]) -> str:
-    return "\n\n".join(f"[{c.get('documento', '')}] {c.get('texto', '')}" for c in contexto) or (
-        "(nenhum trecho encontrado)"
-    )
 
 
 def formatar_critica(estado: EstadoDaConversa) -> str:
@@ -127,7 +122,7 @@ def criar_nos(deps: Dependencias) -> dict[str, object]:
         obs.registrar_jev(
             "guardrail_entrada",
             {"mensagem": str(original.content)},
-            _respostas(resultado.probabilidades),
+            resultado.respostas,
             metadata={"limiar": config.limiar_guardrail_entrada, "bloqueio": resultado.bloqueio},
         )
         atualizacao: dict = {
@@ -151,7 +146,7 @@ def criar_nos(deps: Dependencias) -> dict[str, object]:
         obs.registrar_jev(
             "roteador",
             {"mensagem": mensagem},
-            _respostas({}, {"intencao": roteamento}),
+            roteamento.respostas,
             metadata={"intencao": roteamento.intencao},
         )
         return {"intencao": roteamento.intencao}
@@ -167,7 +162,7 @@ def criar_nos(deps: Dependencias) -> dict[str, object]:
 
     def gerar_resposta(estado: EstadoDaConversa) -> dict:
         prompt = carregar_prompt("gerar_resposta")
-        sistema = prompt_de_sistema(prompt, estado, contexto=formatar_contexto(estado["contexto"]))
+        sistema = prompt_de_sistema(prompt, estado, contexto=formatar_chunks(estado["contexto"]))
         resposta = deps.fabrica.gerador().invoke(
             [sistema, *estado["messages"]], config={"metadata": prompt.metadata()}
         )
@@ -204,6 +199,7 @@ def criar_nos(deps: Dependencias) -> dict[str, object]:
             pedidos=deps.pedidos,
             tickets=deps.tickets,
             turno=turno,
+            observabilidade=obs,
         )
         ultima = estado["messages"][-1]
         if isinstance(ultima, AIMessage) and ultima.tool_calls:
@@ -250,7 +246,7 @@ def criar_nos(deps: Dependencias) -> dict[str, object]:
         obs.registrar_jev(
             "guardrail_saida",
             {"resposta": candidata},
-            _respostas(resultado.probabilidades),
+            resultado.respostas,
             metadata={"limiar": config.limiar_guardrail_saida, "motivo": resultado.motivo},
         )
         if resultado.aprovada:
@@ -308,7 +304,7 @@ def criar_nos(deps: Dependencias) -> dict[str, object]:
                 SystemMessage(
                     prompt.renderizar(
                         resumo_anterior=estado.get("resumo") or "(nenhum)",
-                        mensagens=_formatar(antigas),
+                        mensagens=formatar_conversa(antigas, com_acoes=True),
                     )
                 ),
                 HumanMessage("Resuma."),
@@ -330,28 +326,3 @@ def criar_nos(deps: Dependencias) -> dict[str, object]:
         "guardrail_saida": guardrail_saida,
         "salvar_memoria": salvar_memoria,
     }
-
-
-def _formatar(mensagens: list[BaseMessage]) -> str:
-    linhas = []
-    for m in mensagens:
-        if isinstance(m, HumanMessage):
-            linhas.append(f"Cliente: {m.content}")
-        elif isinstance(m, AIMessage) and m.content:
-            linhas.append(f"Assistente: {m.content}")
-        elif isinstance(m, ToolMessage):
-            linhas.append(f"Ação {m.name}: {m.content}")
-    return "\n".join(linhas)
-
-
-def _respostas(nouls: dict[str, float], choices: dict | None = None):
-    """Monta um RespostasJev a partir das probabilidades já extraídas pelos módulos."""
-    from ampere.nucleo.jev import RespostaChoice, RespostaNoul, RespostasJev
-
-    return RespostasJev(
-        nouls={nome: RespostaNoul(p) for nome, p in nouls.items()},
-        choices={
-            nome: RespostaChoice(r.intencao, r.confianca, r.probabilidades)
-            for nome, r in (choices or {}).items()
-        },
-    )

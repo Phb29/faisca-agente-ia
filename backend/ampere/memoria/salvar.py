@@ -4,13 +4,14 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langgraph.store.base import BaseStore
 from pydantic import BaseModel, Field
 
 from ampere.grafo.prompts import carregar_prompt
 from ampere.memoria.carregar import CHAVE_PROCEDURAL, ler_procedural
 from ampere.memoria.store import namespace_episodica, namespace_procedural, namespace_semantica
+from ampere.nucleo.mensagens import formatar_conversa
 
 __all__ = [
     "MemoriasExtraidas",
@@ -24,20 +25,6 @@ __all__ = [
 class MemoriasExtraidas(BaseModel):
     fatos: list[str] = Field(default_factory=list)
     episodio: str
-
-
-def formatar_conversa(messages: list[BaseMessage]) -> str:
-    """'Cliente: ...' / 'Assistente: ...'; ignora mensagens de tool, de sistema e vazias."""
-    linhas = []
-    for mensagem in messages:
-        conteudo = mensagem.content if isinstance(mensagem.content, str) else str(mensagem.content)
-        if not conteudo.strip():
-            continue
-        if isinstance(mensagem, HumanMessage):
-            linhas.append(f"Cliente: {conteudo.strip()}")
-        elif isinstance(mensagem, AIMessage):
-            linhas.append(f"Assistente: {conteudo.strip()}")
-    return "\n".join(linhas)
 
 
 def salvar_memorias(
@@ -55,7 +42,8 @@ def salvar_memorias(
     conhecidos = "\n".join(f"- {fato}" for fato in fatos_conhecidos or []) or "(nenhum)"
     system = prompt.renderizar(fatos_conhecidos=conhecidos, conversa=formatar_conversa(messages))
     extraidas: MemoriasExtraidas = trabalhador.with_structured_output(MemoriasExtraidas).invoke(
-        [SystemMessage(system), HumanMessage("Extraia as memórias.")]
+        [SystemMessage(system), HumanMessage("Extraia as memórias.")],
+        config={"metadata": prompt.metadata()},
     )
 
     for fato in extraidas.fatos:

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 from typesafe_sdk import Noul
 
-from ampere.nucleo.jev import ClienteJev
+from ampere.nucleo.jev import ClienteJev, RespostasJev
 
 ORDEM = ("fora_do_contexto", "promessa_indevida", "vazamento")
 
@@ -90,6 +90,7 @@ class ResultadoSaida:
     motivo: str | None
     critica: str | None
     probabilidades: dict[str, float]
+    respostas: RespostasJev
 
 
 def avaliar_saida(
@@ -115,4 +116,5 @@ def avaliar_saida(
         motivo=motivo,
         critica=CRITICAS[motivo] if motivo else None,
         probabilidades=probabilidades,
+        respostas=respostas,
     )

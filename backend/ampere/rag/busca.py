@@ -6,6 +6,7 @@ multivetor ColBERT da pergunta (MaxSim). Se o self-querying gerar um filtro que 
 menos que `minimo_candidatos`, a busca roda de novo sem filtro.
 """
 
+from collections.abc import Sequence
 from typing import Any, Literal, Protocol
 
 from qdrant_client import QdrantClient, models
@@ -24,6 +25,15 @@ from ampere.rag.indice import (
 from ampere.rag.self_querying import SelfQuerying
 
 Reranker = Literal["colbert", "nenhum"]
+
+
+def formatar_chunks(chunks: Sequence[Chunk | dict]) -> str:
+    """Trechos como `[documento] texto`, para prompts e para o Guardrail de saída."""
+    linhas = []
+    for chunk in chunks:
+        dados = chunk if isinstance(chunk, dict) else chunk.model_dump()
+        linhas.append(f"[{dados.get('documento', '')}] {dados.get('texto', '')}")
+    return "\n\n".join(linhas) or "(nenhum trecho encontrado)"
 
 
 class Retriever(Protocol):

@@ -2,7 +2,6 @@
 Conversa. Grava a mensagem final e a Aprovação Pendente ANTES de publicar, para que quem
 receber o evento já encontre o dado no banco."""
 
-import importlib
 import threading
 import time
 import traceback
@@ -16,8 +15,11 @@ from ampere.fila.fila import (
     criar_aprovacao,
     gravar_mensagem,
     pegar_proximo_job,
+    substituir_conteudo_da_mensagem,
 )
 from ampere.nucleo.banco import conectar
+
+STATUS_POR_DESFECHO = {"Resolvida": "resolvida", "Escalada": "escalada"}
 
 
 def _tratar_evento(conn, job: Job, evento: Evento) -> Evento:
@@ -36,8 +38,11 @@ def _tratar_evento(conn, job: Job, evento: Evento) -> Evento:
         atualizar_status_conversa(conn, job.conversa_id, "aprovacao_pendente")
         return Evento(tipo=evento.tipo, dados={**d, "aprovacao_id": aprovacao_id})
     if evento.tipo == "message_done":
+        mascarada = evento.dados.get("mensagem_do_cliente_mascarada")
+        if mascarada and job.message_id:
+            substituir_conteudo_da_mensagem(conn, job.message_id, mascarada)
         mensagem_id = gravar_mensagem(conn, job.conversa_id, "assistente", evento.dados["conteudo"])
-        status = "escalada" if evento.dados.get("desfecho") == "Escalada" else "aberta"
+        status = STATUS_POR_DESFECHO.get(evento.dados.get("desfecho"), "aberta")
         atualizar_status_conversa(conn, job.conversa_id, status)
         return Evento(tipo=evento.tipo, dados={**evento.dados, "mensagem_id": mensagem_id})
     return evento
@@ -81,17 +86,3 @@ def rodar_worker(
             parar.wait(intervalo)
         else:
             time.sleep(intervalo)
-
-
-def main() -> None:
-    """Ponto de entrada `python -m ampere.fila.worker`: delega à raiz de composição (`ampere.cli`),
-    que é quem monta o grafo e o `ExecutorDoGrafo`. Importa por nome para esta pasta não
-    depender do grafo (ver docs/adr/0005)."""
-    from ampere.nucleo.config import config
-
-    cli = importlib.import_module("ampere.cli")
-    rodar_worker(config().database_url, cli.montar_executor(config()))
-
-
-if __name__ == "__main__":
-    main()

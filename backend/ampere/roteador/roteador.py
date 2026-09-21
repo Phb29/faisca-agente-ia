@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typesafe_sdk import Choice
 
 from ampere.grafo.estado import Intencao, Memorias
-from ampere.nucleo.jev import ClienteJev
+from ampere.nucleo.jev import ClienteJev, RespostasJev
 
 INTENCOES: tuple[Intencao, ...] = ("duvida", "transacao", "quer_humano")
 
@@ -42,6 +42,7 @@ class Roteamento:
     intencao: Intencao
     confianca: float
     probabilidades: dict[str, float]
+    respostas: RespostasJev
 
 
 def resumir_memorias(memorias: Memorias, *, limite: int = 3) -> str:
@@ -68,4 +69,5 @@ def rotear(jev: ClienteJev, mensagem: str, memorias: Memorias) -> Roteamento:
         intencao=escolha.escolha,  # type: ignore[arg-type]
         confianca=escolha.confianca,
         probabilidades=dict(escolha.probabilidades),
+        respostas=respostas,
     )
