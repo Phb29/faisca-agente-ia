@@ -18,6 +18,7 @@ from qdrant_client import QdrantClient
 
 from ampere.acoes.ticket import StoreDeTickets, StoreDeTicketsPostgres
 from ampere.api.app import criar_app
+from ampere.fila.executor import ExecutorPorTipo
 from ampere.grafo.construtor import Dependencias, construir_grafo
 from ampere.grafo.executor import ExecutorDoGrafo
 from ampere.loja.pedidos import StoreDePedidos, StoreDePedidosPostgres
@@ -83,8 +84,9 @@ class Sistema:
         return construir_grafo(deps, checkpointer=checkpointer, store=store)
 
 
-def montar_executor(cfg: Config) -> ExecutorDoGrafo:
-    """O grafo de produção: stores, checkpointer e Store do LangGraph no mesmo pool."""
+def montar_executor(cfg: Config) -> ExecutorPorTipo:
+    """O executor do worker: o grafo de produção para os jobs do chat (stores, checkpointer
+    e Store do LangGraph no mesmo pool)."""
     pool = criar_pool(cfg.database_url)
     sistema = Sistema(cfg)
     grafo = sistema.construir_grafo(
@@ -93,11 +95,12 @@ def montar_executor(cfg: Config) -> ExecutorDoGrafo:
         checkpointer=PostgresSaver(pool),
         store=montar_store(cfg, pool),
     )
-    return ExecutorDoGrafo(
+    do_grafo = ExecutorDoGrafo(
         grafo,
         observabilidade=sistema.observabilidade,
         tokens_antes_do_guardrail=cfg.tokens_antes_do_guardrail,
     )
+    return ExecutorPorTipo({"mensagem": do_grafo, "retomada": do_grafo})
 
 
 def montar_api(cfg: Config) -> FastAPI:

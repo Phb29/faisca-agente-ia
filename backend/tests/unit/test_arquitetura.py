@@ -1,7 +1,8 @@
 """A regra de acoplamento da ADR 0005, verificada lendo os imports de cada arquivo:
 
 - o grafo importa das outras pastas, e nenhuma outra importa do grafo (só a raiz de
-  composição, que é quem entrega o grafo à fila, à API e aos evals);
+  composição, que é quem entrega o grafo à fila, à API e aos evals); a fila também não
+  importa os evals, que chegam a ela como mais um executor;
 - `prompts/` e `regras/` são conteúdo: qualquer um lê delas, e elas não importam de ninguém;
 - o SDK de cada fornecedor só aparece no adaptador dele (ver docs/adr/0008).
 """
@@ -67,6 +68,11 @@ def test_a_fila_nao_sabe_que_o_grafo_existe():
     da_fila = [m for m in MODULOS if m.startswith("ampere.fila")]
     assert da_fila
     assert not any(_importa(m, "ampere.grafo") for m in da_fila)
+
+
+def test_a_fila_nao_sabe_que_os_evals_existem():
+    da_fila = [m for m in MODULOS if m.startswith("ampere.fila")]
+    assert not any(_importa(m, "ampere.evals") for m in da_fila)
 
 
 @pytest.mark.parametrize("sdk", sorted(ADAPTADORES_POR_SDK))
