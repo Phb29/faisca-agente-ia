@@ -30,7 +30,14 @@ from pydantic import BaseModel, field_validator
 
 from ampere.acoes.ticket import StoreDeTickets, StoreDeTicketsEmMemoria
 from ampere.evals.juiz import Veredito, julgar_resolucao
-from ampere.evals.relatorio import PassosDoCaso, Relatorio, Sorteado, consumir, contexto_base
+from ampere.evals.relatorio import (
+    PassosDoCaso,
+    Relatorio,
+    Sorteado,
+    consumir,
+    contexto_base,
+    sem_erro,
+)
 from ampere.loja.pedidos import Pedido, Reembolso, StoreDePedidos, StoreDePedidosEmMemoria
 from ampere.loja.seed import PEDIDOS, REEMBOLSOS
 from ampere.memoria.procedural import escrever_procedural
@@ -321,7 +328,7 @@ def caso_agente(resultado: ResultadoDoCenario) -> dict:
 
 def resumo_agente(casos: Sequence[dict]) -> dict:
     """Taxas de acerto sobre os casos sem erro; `erros` conta os que falharam."""
-    validos = [c for c in casos if not c.get("erro")]
+    validos = sem_erro(casos)
     n = len(validos)
 
     def taxa(chave: str) -> float:

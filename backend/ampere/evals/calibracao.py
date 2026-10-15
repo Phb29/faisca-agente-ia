@@ -17,7 +17,7 @@ from pydantic import BaseModel, field_validator
 
 from ampere.evals.juiz import Exemplo, Veredito, julgar_resolucao
 from ampere.evals.metricas import MatrizDeConfusao, bootstrap_ic, matriz_de_confusao, tnr, tpr
-from ampere.evals.relatorio import PassosDoCaso, Relatorio, Sorteado, contexto_base
+from ampere.evals.relatorio import PassosDoCaso, Relatorio, Sorteado, contexto_base, sem_erro
 from ampere.nucleo.config import Config
 
 PASTA_DADOS = Path(__file__).parent / "dados"
@@ -249,7 +249,7 @@ def resumo_calibracao(divisao: Divisao, resultado: ResultadoCalibracao) -> dict:
 
 
 def resumo_amostra_juiz(casos: Sequence[dict]) -> dict:
-    validos = [c for c in casos if not c.get("erro")]
+    validos = sem_erro(casos)
     return {
         "n": len(validos),
         "concordaram": sum(c["concorda"] for c in validos),
