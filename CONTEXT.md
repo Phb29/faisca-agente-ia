@@ -91,3 +91,17 @@ _Avoid_: Interrupt, checkpoint, pedido de revisão
 **Tela do Atendente**:
 A página onde o Atendente vê as Aprovações Pendentes, os Tickets e edita a Memória Procedural de cada Cliente.
 _Avoid_: Painel, dashboard, admin
+
+## Avaliação
+
+**Execução**:
+Uma rodada de um eval (Busca, Agente ou Juiz): completa, com o golden inteiro, rodada pelo terminal antes da aula, ou amostra, com 3 casos sorteados, rodada na frente da turma.
+_Avoid_: Run, experimento, rodada de teste
+
+**Amostra ao vivo**:
+A Execução de 3 casos sorteados de grupos diferentes, disparada pela Tela de Avaliação e rodada pela mesma fila do chat.
+_Avoid_: Demo, preview, teste rápido
+
+**Tela de Avaliação**:
+A página que projeta as Execuções dos três evals com números grandes e dispara a Amostra ao vivo, protegida pelo token do Atendente.
+_Avoid_: Dashboard de evals, painel de métricas

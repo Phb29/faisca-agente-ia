@@ -36,11 +36,15 @@ railway domain --service api
 
 ## 5. worker
 
-Mesmo repositório, mesmo root directory `backend`, mesma imagem resultante; só o start command muda: `ampere worker`. Sem domínio, sem healthcheck HTTP (o worker não abre porta) e sem pre-deploy (a api já migrou). Se quiser dois workers, suba `numReplicas` para 2: a fila usa `SELECT FOR UPDATE SKIP LOCKED`, então réplicas não disputam o mesmo job, e todas acordam pelo mesmo `NOTIFY fila_de_jobs`.
+Mesmo repositório, mesmo root directory `backend`, mesma imagem resultante; só o start command muda: `ampere worker`. Sem domínio, sem healthcheck HTTP (o worker não abre porta) e sem pre-deploy (a api já migrou). O worker roda com duas réplicas (`numReplicas` 2, no painel em Settings → Deploy ou pela API do Railway): enquanto uma amostra ao vivo da Tela de Avaliação ocupa uma réplica por até um minuto, a outra atende o chat. A fila usa `SELECT FOR UPDATE SKIP LOCKED`, então réplicas não disputam o mesmo job, e a reserva pula o job que tem outro mais antigo da mesma Conversa em andamento, então duas mensagens da mesma Conversa nunca rodam juntas (ADR 0009). Cada réplica mantém uma só cópia do modelo de embedding MiniLM na memória, compartilhada pelo retriever, pela Memória Semântica e pela amostra do agente, então confira o uso de memória no painel depois da primeira amostra.
 
 ## 6. frontend
 
 Root directory `frontend`. O `frontend/Dockerfile` gera a imagem standalone do Next e precisa de `NEXT_PUBLIC_API_URL` **no build**, porque o Next embute o valor no bundle. O Railway passa as variáveis do serviço como build args para o Dockerfile (o `ARG NEXT_PUBLIC_API_URL` já está declarado lá), então basta definir a variável no serviço com o domínio público da api, por exemplo `https://api-production-xxxx.up.railway.app`, e gerar um domínio público para o frontend. O container escuta na `3000`, que é a `PORT` padrão da imagem.
+
+## Ordem do deploy e execuções dos evals
+
+Quando uma mudança traz migração nova, o deploy segue a ordem api, worker e frontend, esperando cada um terminar: a api aplica as migrações no pre-deploy, e um worker novo que subisse antes delas falharia ao reservar jobs. As execuções completas que a Tela de Avaliação mostra são rodadas de dentro do worker, que enxerga o banco e tem as chaves: `railway ssh --service worker -- ampere-evals rag`, depois `agente` e `calibracao`. O RAG completo gasta a cota da Groq do trabalhador do chat; rode com folga antes da aula.
 
 ## Variáveis por serviço
 

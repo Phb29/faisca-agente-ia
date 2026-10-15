@@ -93,7 +93,7 @@ A ordem em que uma mensagem atravessa o sistema. Cada pasta tem um README curto:
 7. [acoes](backend/ampere/acoes) e [loja](backend/ampere/loja): as quatro Ações, o Gate de Aprovação e o human-in-the-loop do Reembolso
 8. [memoria](backend/ampere/memoria): Semântica, Episódica e Procedural
 9. [observabilidade](backend/ampere/observabilidade): Langfuse, sessões e spans do Jev
-10. [evals](backend/ampere/evals): RAG, agente e calibração do juiz
+10. [evals](backend/ampere/evals): RAG, agente, calibração do juiz e a Tela de Avaliação (`/avaliacao`), com a amostra ao vivo
 11. [nucleo](backend/ampere/nucleo): config, fábrica de modelos, Jev, falsos, banco e migrações
 
 Também: [frontend](frontend), [tests](backend/tests), [CONTEXT.md](CONTEXT.md) (glossário), a raiz de composição em [backend/ampere/composicao.py](backend/ampere/composicao.py) e as ADRs:
@@ -106,5 +106,6 @@ Também: [frontend](frontend), [tests](backend/tests), [CONTEXT.md](CONTEXT.md) 
 - [0006 Identificadores de domínio em português, técnicos em inglês](docs/adr/0006-dominio-em-portugues.md)
 - [0007 Regras do Jev em YAML legível, fora do código](docs/adr/0007-regras-do-jev-em-yaml.md)
 - [0008 Fornecedores atrás de interfaces do projeto, sem reorganizar em camadas](docs/adr/0008-fornecedores-atras-de-interfaces.md)
+- [0009 Avaliação ao vivo pela mesma fila e pelo mesmo stream do chat](docs/adr/0009-avaliacao-ao-vivo-pela-fila.md)
 
 Deploy em produção, com cinco serviços no Railway: [docs/railway.md](docs/railway.md). Licença [MIT](LICENSE).
