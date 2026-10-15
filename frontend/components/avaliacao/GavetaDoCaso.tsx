@@ -49,7 +49,8 @@ export function GavetaDoCaso({ nome, caso, aoFechar }: Props) {
   );
 }
 
-function Etiqueta({ children }: { children: ReactNode }) {
+/** Uma etiqueta neutra em mono, para ids e rótulos curtos. */
+export function Etiqueta({ children }: { children: ReactNode }) {
   return (
     <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[10.5px] text-ink-2 ring-1 ring-line ring-inset">
       {children}
@@ -90,7 +91,7 @@ function DoAgente({ caso }: { caso: CasoAgente }) {
         <div className="divide-y divide-line">
           {CONFERENCIAS.map(([chave, rotulo]) => (
             <div key={chave} className="grid grid-cols-[84px_1fr_1fr_24px] items-center gap-2 py-2 text-[13px]">
-              <span className="font-mono text-[10.5px] text-muted uppercase">{rotulo}</span>
+              <span className="sobretitulo">{rotulo}</span>
               <span className="text-ink-2">{caso.esperado[chave] ?? "bloqueio"}</span>
               <span className={cx("font-semibold", !caso.ok[chave] && "text-perigo")}>{caso.obtido[chave]}</span>
               <Quadrinho ok={caso.ok[chave]} rotulo={rotulo} tamanho="sm" />

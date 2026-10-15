@@ -3,16 +3,12 @@
 import type { Caso, CasoAgente, Execucao, ResumoAgente } from "@/lib/api";
 import { porcento, rotuloDoGrupo, temErro } from "@/lib/avaliacao";
 import { Pilula } from "@/components/ui/Pilula";
+import { Etiqueta } from "./GavetaDoCaso";
 import { Numeros } from "./Numeros";
-import { QuadrinhosDoAgente } from "./Quadrinho";
+import { CONFERENCIAS, QuadrinhosDoAgente } from "./Quadrinho";
 import { Quadro } from "./Quadro";
 
 const ORDEM_DOS_GRUPOS = ["duvida", "transacao", "quer_humano", "bloqueio"];
-const CONFERENCIAS = [
-  ["intencao", "Intenção"],
-  ["acao", "Ação"],
-  ["desfecho", "Desfecho"],
-] as const;
 
 type Props = { execucao: Execucao; aoAbrirCaso: (caso: Caso) => void };
 
@@ -88,7 +84,7 @@ function Cenarios({ casos, aoAbrirCaso }: { casos: Caso[]; aoAbrirCaso: (caso: C
         <div className="mt-2 max-h-[520px] overflow-y-auto pr-1">
           <div
             aria-hidden
-            className="sticky top-0 z-10 flex items-center gap-3 bg-surface px-1 py-1 font-mono text-[9px] text-muted"
+            className="sobretitulo sticky top-0 z-10 flex items-center gap-3 bg-surface px-1 py-1 text-[9px]"
           >
             <span className="min-w-0 flex-1" />
             <span className="flex shrink-0 gap-1.5">
@@ -112,9 +108,7 @@ function Cenarios({ casos, aoAbrirCaso }: { casos: Caso[]; aoAbrirCaso: (caso: C
                       onClick={() => aoAbrirCaso(caso)}
                       className="flex w-full items-center gap-3 rounded-md px-1 py-2 text-left text-[13px] transition-colors hover:bg-surface-2"
                     >
-                      <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[10.5px] text-ink-2 ring-1 ring-line ring-inset">
-                        {caso.id}
-                      </span>
+                      <Etiqueta>{caso.id}</Etiqueta>
                       <span className="min-w-0 flex-1 truncate text-ink-2">{caso.texto}</span>
                       <QuadrinhosDoAgente caso={caso} />
                     </button>
@@ -165,11 +159,7 @@ function OndeErrou({ casos, aoAbrirCaso }: { casos: Caso[]; aoAbrirCaso: (caso: 
 }
 
 function ErroDoCaso({ caso }: { caso: Caso }) {
-  const id = (
-    <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[10.5px] text-ink-2 ring-1 ring-line ring-inset">
-      {caso.id}
-    </span>
-  );
+  const id = <Etiqueta>{caso.id}</Etiqueta>;
   if (temErro(caso)) {
     return (
       <>

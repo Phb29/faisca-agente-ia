@@ -48,7 +48,12 @@ export function PainelDoEval({ nome, token, amostraGlobal, recarregarAmostraGlob
       void recarregarExecucoes();
       void recarregarAmostraGlobal();
     },
-    aoOcupadaPorOutro: () => void recarregarAmostraGlobal(),
+    // Um segundo clique em qualquer aba recebe o 409 de outro eval e leva direto à aba dela;
+    // o efeito abaixo conecta ao vivo assim que a amostra global confirmar a execução em curso.
+    aoOcupadaPorOutro: (evalOcupado) => {
+      void recarregarAmostraGlobal();
+      if (evalOcupado) aoIrPara(evalOcupado);
+    },
     aoFalhar,
   });
 

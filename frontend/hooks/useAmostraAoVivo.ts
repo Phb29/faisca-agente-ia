@@ -111,8 +111,8 @@ function encerraOStream({ tipo, dados }: EventoBruto): boolean {
 type Opcoes = {
   /** A amostra terminou, bem ou mal: hora de atualizar a lista de execuções. */
   aoTerminar: () => void;
-  /** O botão esbarrou numa amostra de outro eval. */
-  aoOcupadaPorOutro: () => void;
+  /** O botão esbarrou numa amostra de outro eval: qual, quando o 409 disser (a aba dela conecta sozinha). */
+  aoOcupadaPorOutro: (nome: NomeDoEval | null) => void;
   aoFalhar: (erro: unknown) => void;
 };
 
@@ -135,7 +135,7 @@ export function useAmostraAoVivo(token: string, nome: NomeDoEval, opcoes: Opcoes
     opcoesAtuais.current = opcoes;
   });
   // Guarda se o painel ainda está montado: `disparar` pode terminar o POST depois que o
-  // presenter já trocou de aba, e aí `conectar` não deve abrir um stream que ninguém vai fechar.
+  // apresentador já trocou de aba, e aí `conectar` não deve abrir um stream que ninguém vai fechar.
   const montado = useRef(false);
   useEffect(() => {
     montado.current = true;
@@ -215,7 +215,7 @@ export function useAmostraAoVivo(token: string, nome: NomeDoEval, opcoes: Opcoes
             return;
           }
           if (!ocupada?.execucao_id && tentativa === 0) continue;
-          opcoesAtuais.current.aoOcupadaPorOutro();
+          opcoesAtuais.current.aoOcupadaPorOutro(ocupada?.eval ?? null);
           return;
         }
       }

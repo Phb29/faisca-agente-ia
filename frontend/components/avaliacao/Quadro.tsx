@@ -4,13 +4,11 @@ type Props = {
   id: string;
   titulo: string;
   descricao: string;
-  /** Algo à direita do título (as legendas das colunas, por exemplo). */
-  extra?: ReactNode;
   children: ReactNode;
 };
 
 /** Um bloco de uma aba: título, uma frase do que ele mostra e o conteúdo. */
-export function Quadro({ id, titulo, descricao, extra, children }: Props) {
+export function Quadro({ id, titulo, descricao, children }: Props) {
   return (
     <section aria-labelledby={id} className="min-w-0 rounded-2xl bg-surface p-5 shadow-suave ring-1 ring-line">
       <div className="flex items-end justify-between gap-4">
@@ -20,7 +18,6 @@ export function Quadro({ id, titulo, descricao, extra, children }: Props) {
           </h2>
           <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{descricao}</p>
         </div>
-        {extra}
       </div>
       {children}
     </section>

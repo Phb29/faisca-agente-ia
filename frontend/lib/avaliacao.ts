@@ -103,7 +103,7 @@ export function fraseDoMrr(mrr: number | null | undefined): string {
 const GRUPOS: Record<string, string> = {
   duvida: "Dúvida",
   transacao: "Transação",
-  quer_humano: "Pedido de humano",
+  quer_humano: "Pede um Atendente",
   bloqueio: "Bloqueio",
   adversarial: "adversarial",
   manual: "manual",

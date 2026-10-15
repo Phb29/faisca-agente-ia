@@ -77,7 +77,7 @@ function Variantes({ resumo }: { resumo: ResumoRag | null }) {
         </p>
       ) : (
         <>
-          <div className="mt-4 grid grid-cols-[minmax(0,270px)_minmax(64px,1fr)_48px_48px] gap-x-3 border-b border-line pb-2 font-mono text-[10px] tracking-[0.08em] text-muted uppercase">
+          <div className="sobretitulo mt-4 grid grid-cols-[minmax(0,270px)_minmax(64px,1fr)_48px_48px] gap-x-3 border-b border-line pb-2">
             <span>Variante</span>
             <span>Recall@5</span>
             <span className="text-right">R@5</span>

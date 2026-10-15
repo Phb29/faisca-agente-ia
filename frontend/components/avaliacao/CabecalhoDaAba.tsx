@@ -3,6 +3,7 @@
 import { ArrowRight, Play, RefreshCw } from "lucide-react";
 import type { Execucao, NomeDoEval } from "@/lib/api";
 import { descreverExecucao, fraseDaAba, TAMANHO_DA_AMOSTRA, TEXTOS } from "@/lib/avaliacao";
+import { terminada } from "@/hooks/useAmostraAoVivo";
 import { Botao } from "@/components/ui/Botao";
 
 export type EstadoDoBotao =
@@ -25,7 +26,7 @@ type Props = {
 export function CabecalhoDaAba(props: Props) {
   const { nome, execucoes, mostrada, selecionadaId, aoEscolher } = props;
   const textos = TEXTOS[nome];
-  const opcoes = (execucoes ?? []).filter((e) => e.status === "concluida" || e.status === "erro");
+  const opcoes = (execucoes ?? []).filter((e) => terminada(e.status));
 
   return (
     <div className="flex animate-surgir flex-wrap items-end gap-x-8 gap-y-5 pt-10 pb-8">

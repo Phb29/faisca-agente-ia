@@ -67,7 +67,7 @@ export function QuadrinhosDoAgente({ caso, escuro = false }: { caso: Caso; escur
 export function Voz({ quem, veredito }: { quem: string; veredito: Veredito }) {
   return (
     <span className="block rounded-xl bg-surface-2 p-3 text-[13px] leading-relaxed text-ink-2 ring-1 ring-line ring-inset">
-      <span className="mb-1.5 flex items-center gap-2 font-mono text-[10.5px] tracking-[0.08em] text-muted uppercase">
+      <span className="sobretitulo mb-1.5 flex items-center gap-2">
         <Quadrinho ok={veredito.aprovada} rotulo={quem} tamanho="sm" verbos={["aprovou", "reprovou"]} />
         {quem} · {veredito.aprovada ? "Aprovada" : "Reprovada"}
       </span>
