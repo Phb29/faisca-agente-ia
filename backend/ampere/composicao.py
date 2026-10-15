@@ -2,8 +2,8 @@
 grafo, executor, worker e API.
 
 Fica fora das pastas de conceito de propósito: é aqui que o grafo é entregue à fila (como um
-`Executor`) e aos evals (como uma `Composicao`), sem que nenhuma delas importe dele (ver
-docs/adr/0005).
+`Executor`) e aos evals (como uma `Composicao`), e que o tipo de job `eval` é ligado à
+amostra ao vivo, sem que nenhuma dessas pastas importe da outra (ver docs/adr/0005 e 0009).
 """
 
 from fastapi import FastAPI
@@ -18,6 +18,8 @@ from qdrant_client import QdrantClient
 
 from ampere.acoes.ticket import StoreDeTickets, StoreDeTicketsPostgres
 from ampere.api.app import criar_app
+from ampere.evals.ao_vivo import ExecutorDeAvaliacao
+from ampere.evals.execucoes import RegistroPostgres
 from ampere.fila.executor import ExecutorPorTipo
 from ampere.grafo.construtor import Dependencias, construir_grafo
 from ampere.grafo.executor import ExecutorDoGrafo
@@ -65,6 +67,9 @@ class Sistema:
     def juiz(self) -> BaseChatModel:
         return self.fabrica.juiz()
 
+    def gerador(self) -> BaseChatModel:
+        return self.fabrica.gerador()
+
     def construir_grafo(
         self,
         *,
@@ -86,7 +91,7 @@ class Sistema:
 
 def montar_executor(cfg: Config) -> ExecutorPorTipo:
     """O executor do worker: o grafo de produção para os jobs do chat (stores, checkpointer
-    e Store do LangGraph no mesmo pool)."""
+    e Store do LangGraph no mesmo pool) e a amostra ao vivo para os jobs de eval."""
     pool = criar_pool(cfg.database_url)
     sistema = Sistema(cfg)
     grafo = sistema.construir_grafo(
@@ -100,7 +105,8 @@ def montar_executor(cfg: Config) -> ExecutorPorTipo:
         observabilidade=sistema.observabilidade,
         tokens_antes_do_guardrail=cfg.tokens_antes_do_guardrail,
     )
-    return ExecutorPorTipo({"mensagem": do_grafo, "retomada": do_grafo})
+    avaliacao = ExecutorDeAvaliacao(cfg, sistema, RegistroPostgres(pool))
+    return ExecutorPorTipo({"mensagem": do_grafo, "retomada": do_grafo, "eval": avaliacao})
 
 
 def montar_api(cfg: Config) -> FastAPI:
