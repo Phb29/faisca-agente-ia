@@ -18,10 +18,11 @@ from ampere.evals.juiz import (
 )
 from ampere.evals.metricas import MatrizDeConfusao
 from ampere.nucleo.config import Config
-from ampere.nucleo.falsos import ModeloFalso
+from ampere.nucleo.falsos import JevFalso, ModeloFalso
 from ampere.prompts import NOMES, carregar_prompt
 from ampere.rag.busca import RetrieverFalso
 from ampere.rag.chunkers import Chunk
+from tests.apoio import composicao_falsa, tool_call
 
 PASTA_DADOS = Path(__file__).parents[2] / "ampere" / "evals" / "dados"
 
@@ -256,6 +257,46 @@ def test_comparar_detecta_aprovacao_pendente_pela_interrupcao():
     assert comparacao.intencao_ok and comparacao.acao_ok and comparacao.desfecho_ok
 
 
+def test_comparar_conta_a_acao_presa_no_gate_como_tomada():
+    esperado = cenario(
+        intencao_esperada="transacao",
+        acao_esperada="emitir_reembolso",
+        desfecho_esperado="Aprovação Pendente",
+    )
+    interrompido = estado(
+        intencao="transacao",
+        acoes_tomadas=[],
+        desfecho=None,
+        messages=[
+            HumanMessage("quero reembolso"),
+            tool_call("emitir_reembolso", {"pedido_id": "P1"}),
+        ],
+        __interrupt__=[object()],
+    )
+
+    comparacao = agente.comparar(esperado, interrompido)
+
+    assert comparacao.acao == "emitir_reembolso"
+    assert comparacao.acao_ok
+    assert comparacao.desfecho == "Aprovação Pendente"
+
+
+def test_comparar_nao_conta_tool_call_pendente_sem_interrupcao():
+    esperado = cenario(acao_esperada="emitir_reembolso")
+    sem_interrupcao = estado(
+        acoes_tomadas=[],
+        messages=[
+            HumanMessage("quero reembolso"),
+            tool_call("emitir_reembolso", {"pedido_id": "P1"}),
+        ],
+    )
+
+    comparacao = agente.comparar(esperado, sem_interrupcao)
+
+    assert comparacao.acao == "nenhuma"
+    assert not comparacao.acao_ok
+
+
 def test_comparar_cenario_bloqueado_pelo_guardrail():
     bloqueado = cenario(
         intencao_esperada=None,
@@ -398,35 +439,13 @@ def test_rotulos_humanos_carregam_balanceados():
 
 
 def test_executar_cenario_roda_o_grafo_compara_e_pede_veredito_ao_juiz():
-    from ampere.grafo.construtor import Dependencias, construir_grafo
-    from ampere.nucleo.falsos import JevFalso
-    from ampere.nucleo.modelos import FabricaDeModelos
-    from ampere.observabilidade.langfuse import Observabilidade
-
     config = Config(modelos_falsos=True)
-    fabrica = FabricaDeModelos(
-        config,
-        gerador=ModeloFalso(["A garantia de notebooks é de 12 meses."]),
-        juiz=ModeloFalso([Veredito(aprovada=True, critica="resolveu")]),
+    composicao = composicao_falsa(
+        gerador=["A garantia de notebooks é de 12 meses."],
+        juiz=[Veredito(aprovada=True, critica="resolveu")],
         jev=JevFalso(choices={"intencao": "duvida"}),
+        config=config,
     )
-
-    class ComposicaoFalsa:
-        observabilidade = Observabilidade(config)
-
-        def juiz(self):
-            return fabrica.juiz()
-
-        def construir_grafo(self, *, pedidos, tickets, checkpointer, store):
-            deps = Dependencias(
-                config=config,
-                fabrica=fabrica,
-                retriever=RetrieverFalso([chunk("garantia_notebooks.md")]),
-                pedidos=pedidos,
-                tickets=tickets,
-                observabilidade=self.observabilidade,
-            )
-            return construir_grafo(deps, checkpointer=checkpointer, store=store)
 
     cenario = agente.Cenario(
         id="duvida-01",
@@ -437,7 +456,7 @@ def test_executar_cenario_roda_o_grafo_compara_e_pede_veredito_ao_juiz():
         desfecho_esperado="Resolvida",
     )
 
-    resultado = agente.ExecutorDeCenarios(config, ComposicaoFalsa()).executar(cenario)
+    resultado = agente.ExecutorDeCenarios(config, composicao).executar(cenario)
 
     assert resultado.comparacao.tudo_ok
     assert resultado.resposta == "A garantia de notebooks é de 12 meses."

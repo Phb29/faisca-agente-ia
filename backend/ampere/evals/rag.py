@@ -464,7 +464,7 @@ def _publicar(
 ) -> None:
     from ampere.evals.datasets import publicar_dataset, publicar_run
 
-    ids = {linha.pergunta: f"rag-{i:03d}" for i, linha in enumerate(golden)}
+    ids = {linha.pergunta: id_da_pergunta(i) for i, linha in enumerate(golden)}
     publicar_dataset(
         cliente,
         NOME_DATASET,

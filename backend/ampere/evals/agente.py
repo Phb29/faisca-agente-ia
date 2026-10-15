@@ -106,16 +106,26 @@ class Comparacao:
         return self.intencao_ok and self.acao_ok and self.desfecho_ok
 
 
+def _acoes_presas_no_gate(estado_final: dict) -> list[str]:
+    """Nomes dos tool_calls da última AIMessage: pedidos que pararam no Gate sem atualizar
+    `acoes_tomadas` (a interrupção acontece no meio de `_executar_acoes`, antes do `Command`)."""
+    for mensagem in reversed(estado_final.get("messages") or []):
+        if isinstance(mensagem, AIMessage):
+            return [chamada["name"] for chamada in mensagem.tool_calls]
+    return []
+
+
 def comparar(cenario: Cenario, estado_final: dict) -> Comparacao:
-    """Puro. A Ação observada é a primeira tomada; a interrupção vale como Aprovação Pendente."""
+    """Puro. A Ação observada é a primeira tomada; a interrupção vale como Aprovação Pendente,
+    e a Ação parada no Gate conta como tomada."""
     bloqueado = bool(estado_final.get("bloqueio"))
     intencao = estado_final.get("intencao") or SEM_ACAO
+    interrompido = bool(estado_final.get("__interrupt__"))
     acoes = list(estado_final.get("acoes_tomadas") or [])
+    if interrompido:
+        acoes += _acoes_presas_no_gate(estado_final)
     acao = acoes[0] if acoes else SEM_ACAO
-    if estado_final.get("__interrupt__"):
-        desfecho = APROVACAO_PENDENTE
-    else:
-        desfecho = estado_final.get("desfecho") or "nenhum"
+    desfecho = APROVACAO_PENDENTE if interrompido else (estado_final.get("desfecho") or "nenhum")
 
     if cenario.guardrail_bloqueia and cenario.intencao_esperada is None:
         intencao_ok = bloqueado
