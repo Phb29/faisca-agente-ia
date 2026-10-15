@@ -4,7 +4,7 @@ import random
 
 import pytest
 
-from ampere.evals import agente, rag
+from ampere.evals import agente, calibracao, rag
 from ampere.evals.juiz import Veredito
 from ampere.evals.relatorio import Sorteado, caso_com_erro, consumir, contexto_base, media
 from ampere.nucleo.config import Config
@@ -370,3 +370,111 @@ def test_caso_ao_vivo_do_agente_devolve_o_caso_pronto():
     assert fases[-1] == "juiz"
     assert caso["id"] == "ag01"
     assert caso["juiz"] == {"aprovada": True, "critica": "ok"}
+
+
+# --- juiz (calibração) ------------------------------------------------------------------------
+
+
+def rotulo(aprovada: bool, n: int) -> calibracao.Rotulo:
+    return calibracao.Rotulo(
+        indice=n,
+        mensagem=f"mensagem {n}",
+        resposta=f"resposta {n}",
+        aprovada=aprovada,
+        critica="ok" if aprovada else "promete demais",
+    )
+
+
+def test_carregar_rotulos_numera_pela_posicao_no_csv():
+    rotulos = calibracao.carregar_rotulos()
+
+    assert [r.indice for r in rotulos] == list(range(len(rotulos)))
+    assert calibracao.id_do_rotulo(rotulos[7]) == "rot-07"
+
+
+def test_caso_do_juiz_poe_humano_e_juiz_lado_a_lado():
+    julgamento = calibracao.Julgamento(
+        rotulo=rotulo(False, 3),
+        veredito=Veredito(aprovada=True, critica="parece ok"),
+        duracao_s=0.814,
+    )
+
+    assert calibracao.caso_juiz("dev", julgamento) == {
+        "id": "rot-03",
+        "texto": "mensagem 3",
+        "grupo": "reprovada",
+        "conjunto": "dev",
+        "mensagem": "mensagem 3",
+        "resposta": "resposta 3",
+        "humano": {"aprovada": False, "critica": "promete demais"},
+        "juiz": {"aprovada": True, "critica": "parece ok"},
+        "concorda": False,
+        "duracao_s": 0.81,
+        "erro": None,
+    }
+
+
+def test_calibrar_guarda_cada_julgamento_e_o_resumo_traz_as_taxas():
+    divisao = calibracao.Divisao(
+        treino=[rotulo(True, 0), rotulo(False, 1)],
+        dev=[rotulo(True, 2), rotulo(False, 3)],
+        teste=[rotulo(True, 4), rotulo(False, 5)],
+    )
+    juiz = ModeloFalso(
+        [
+            Veredito(aprovada=True, critica="a"),
+            Veredito(aprovada=False, critica="b"),
+            Veredito(aprovada=True, critica="c"),
+            Veredito(aprovada=True, critica="d"),
+        ]
+    )
+
+    resultado = calibracao.calibrar(juiz, divisao, n_bootstrap=20)
+    resumo = calibracao.resumo_calibracao(divisao, resultado)
+
+    assert [j.veredito.critica for j in resultado.dev.julgamentos] == ["a", "b"]
+    assert [j.rotulo.indice for j in resultado.teste.julgamentos] == [4, 5]
+    assert resumo["tamanhos"] == {"treino": 2, "dev": 2, "teste": 2}
+    assert resumo["dev"]["matriz"] == {"vp": 1, "fn": 0, "vn": 1, "fp": 0}
+    assert resumo["dev"]["tpr"] == pytest.approx(1.0)
+    assert resumo["dev"]["tnr"] == pytest.approx(1.0)
+    assert resumo["teste"]["matriz"] == {"vp": 1, "fn": 0, "vn": 0, "fp": 1}
+    assert resumo["taxa_observada"] == pytest.approx(1.0)
+    assert len(resumo["intervalo"]) == 2
+
+
+def test_resumo_da_amostra_do_juiz_conta_as_concordancias():
+    casos = [{"concorda": True}, {"concorda": False}, {"id": "rot-09", "erro": "o juiz caiu"}]
+
+    assert calibracao.resumo_amostra_juiz(casos) == {"n": 2, "concordaram": 1, "erros": 1}
+
+
+def test_sortear_amostra_do_juiz_so_usa_o_teste_e_as_duas_classes():
+    rotulos = [rotulo(True, i) for i in range(12)] + [rotulo(False, i + 12) for i in range(8)]
+    teste = calibracao.dividir(rotulos, seed=0).teste
+
+    for seed in range(8):
+        sorteados = calibracao.sortear_amostra(random.Random(seed), rotulos)
+
+        assert all(s.item in teste for s in sorteados)
+        assert len({s.id for s in sorteados}) == 3
+        assert {s.grupo for s in sorteados} == {"aprovada", "reprovada"}
+        assert all(s.texto == s.item.mensagem for s in sorteados)
+
+
+def test_sortear_amostra_do_juiz_funciona_com_os_rotulos_reais():
+    assert len(calibracao.sortear_amostra(random.Random(1))) == 3
+
+
+def test_caso_ao_vivo_do_juiz_julga_com_o_few_shot_do_treino():
+    juiz = ModeloFalso([Veredito(aprovada=False, critica="promete 30 dias")])
+    sorteado = Sorteado(id="rot-05", texto="mensagem 5", grupo="reprovada", item=rotulo(False, 5))
+
+    fases, caso = rodar_passos(
+        calibracao.caso_ao_vivo(sorteado, juiz=juiz, few_shot=[rotulo(True, 0).exemplo()])
+    )
+
+    assert fases == ["juiz"]
+    assert caso["conjunto"] == "teste"
+    assert caso["concorda"] is True
+    assert "mensagem 0" in juiz.chamadas[0][0].content
