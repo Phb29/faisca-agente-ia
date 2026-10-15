@@ -21,6 +21,35 @@ def _configurar_logs() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
 
+def _salvar(eval: str, relatorio, *, sem_salvar: bool) -> None:
+    """Grava a execução completa no banco do `.env`, para a Tela de Avaliação mostrar. Em
+    produção, rode o eval de dentro do worker do Railway, que enxerga o banco e tem as
+    chaves dos modelos: `railway ssh --service worker -- ampere-evals agente`."""
+    if sem_salvar:
+        return
+    if relatorio is None:
+        typer.echo("execução não gravada: a rodada não gerou relatório")
+        return
+    import psycopg
+
+    from ampere.evals.execucoes import salvar_completa
+    from ampere.nucleo.banco import conectar
+
+    try:
+        with conectar(config().database_url, autocommit=True) as conn:
+            execucao_id = salvar_completa(
+                conn,
+                eval,
+                contexto=relatorio.contexto,
+                resumo=relatorio.resumo,
+                casos=relatorio.casos,
+            )
+    except psycopg.Error as exc:
+        typer.echo(f"execução não gravada: {exc}")
+        return
+    typer.echo(f"execução gravada: {execucao_id}")
+
+
 @app.command()
 def migrate() -> None:
     """Cria as tabelas da fila, das Conversas e do LangGraph (checkpointer e Store)."""
@@ -96,33 +125,44 @@ def evals_rag(
         False, "--so-retrieval", help="Só Recall@5 e MRR, sem gerador nem juiz."
     ),
     amostra: int = typer.Option(None, "--amostra", help="Usa só as N primeiras perguntas."),
+    sem_salvar: bool = typer.Option(False, "--sem-salvar", help="Não grava a execução."),
 ) -> None:
     """Recall@5 e MRR por variante (embedder, chunker, reranker, self-querying) e juiz."""
     from ampere.evals.rag import rodar
 
-    rodar(config(), so_retrieval=so_retrieval, amostra=amostra)
+    relatorio = rodar(config(), so_retrieval=so_retrieval, amostra=amostra)
+    if amostra:
+        typer.echo("execução parcial (--amostra) não é gravada")
+        return
+    _salvar("rag", relatorio, sem_salvar=sem_salvar)
 
 
 @evals.command("agente")
 def evals_agente(
     amostra: int = typer.Option(None, "--amostra", help="Usa só os N primeiros cenários."),
+    sem_salvar: bool = typer.Option(False, "--sem-salvar", help="Não grava a execução."),
 ) -> None:
     """Um turno do grafo real por cenário: intenção, Ação e desfecho por código, e o juiz."""
     from ampere.composicao import Sistema
     from ampere.evals.agente import rodar
 
     cfg = config()
-    rodar(cfg, Sistema(cfg), amostra=amostra)
+    relatorio = rodar(cfg, Sistema(cfg), amostra=amostra)
+    if amostra:
+        typer.echo("execução parcial (--amostra) não é gravada")
+        return
+    _salvar("agente", relatorio, sem_salvar=sem_salvar)
 
 
 @evals.command("calibracao")
 def evals_calibracao(
     seed: int = typer.Option(0, "--seed", help="Seed da divisão treino/dev/teste."),
+    sem_salvar: bool = typer.Option(False, "--sem-salvar", help="Não grava a execução."),
 ) -> None:
     """Juiz contra rótulos humanos: TPR, TNR, matriz, desacordos e Rogan-Gladen com IC."""
     from ampere.evals.calibracao import rodar
 
-    rodar(config(), seed=seed)
+    _salvar("juiz", rodar(config(), seed=seed), sem_salvar=sem_salvar)
 
 
 if __name__ == "__main__":
