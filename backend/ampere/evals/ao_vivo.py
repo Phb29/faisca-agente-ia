@@ -29,7 +29,6 @@ from ampere.rag.busca import Retriever
 
 log = logging.getLogger(__name__)
 
-TAMANHO_DA_AMOSTRA = 3
 # O NOTIFY aceita até 8.000 bytes: um caso maior vai só com o id, e a tela relê a execução.
 LIMITE_DO_AVISO = 7000
 
@@ -53,6 +52,9 @@ class RoteiroDoEval:
 
 
 class ExecutorDeAvaliacao:
+    """O `Executor` do job `eval`: sorteia a amostra, roda um caso de cada vez e grava cada
+    passo antes de avisar (ver docstring do módulo)."""
+
     def __init__(
         self,
         config: Config,
@@ -79,7 +81,7 @@ class ExecutorDeAvaliacao:
         roteiro = self._roteiro(eval)
         sorteados = roteiro.sortear(self._sorteio())
         cartoes = [s.cartao() for s in sorteados]
-        contexto = {**roteiro.contexto, "sorteados": cartoes}
+        contexto = {**roteiro.contexto, "n": len(sorteados), "sorteados": cartoes}
         if not self.registro.marcar_rodando(execucao_id, contexto):
             yield Evento(tipo="error", dados={"mensagem": "amostra liberada antes de começar"})
             return
@@ -131,16 +133,21 @@ class ExecutorDeAvaliacao:
                 passos=lambda s: calibracao.caso_ao_vivo(
                     s, juiz=self.composicao.juiz(), few_shot=exemplos
                 ),
-                contexto={**self._contexto(calibracao.PROMPTS_DO_JUIZ), "seed": 0},
+                contexto={
+                    **self._contexto(calibracao.PROMPTS_DO_JUIZ),
+                    "seed": calibracao.SEED_DA_AMOSTRA,
+                },
                 resumo=calibracao.resumo_amostra_juiz,
             )
         raise ValueError(f"eval desconhecido: {eval!r}")
 
     def _contexto(self, prompts: tuple[str, ...]) -> dict:
-        return contexto_base(self.config, prompts=prompts, n=TAMANHO_DA_AMOSTRA)
+        """O `n` é um placeholder: `_executar` o troca pelo tamanho real do sorteio."""
+        return contexto_base(self.config, prompts=prompts, n=0)
 
     def _executor_de_cenarios(self) -> ExecutorDeCenarios:
-        """Um só por processo: ele carrega o embedder da Memória Semântica."""
+        """Um só por processo: reaproveita a composição do grafo entre as amostras. O
+        embedder que ele cria é instância nova, mas carrega o mesmo MiniLM do processo."""
         if self._cenarios is None:
             self._cenarios = ExecutorDeCenarios(self.config, self.composicao)
         return self._cenarios

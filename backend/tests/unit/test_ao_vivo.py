@@ -5,12 +5,14 @@ import random
 
 import pytest
 
-from ampere.evals import rag
+from ampere.evals import calibracao, rag
 from ampere.evals.ao_vivo import LIMITE_DO_AVISO, ExecutorDeAvaliacao, evento_do_caso
 from ampere.evals.execucoes import RegistroEmMemoria
 from ampere.evals.juiz import Veredito
+from ampere.fila.eventos import Evento
 from ampere.fila.fila import Job
 from ampere.nucleo.config import Config
+from ampere.prompts import carregar_prompt
 from tests.apoio import composicao_falsa
 
 CONFIG = Config(modelos_falsos=True)
@@ -153,6 +155,46 @@ def test_amostra_liberada_antes_de_comecar_nao_roda_nada():
     assert registro.execucoes["e1"]["casos"] == []
 
 
+class _RegistroLiberadoAoConcluir(RegistroEmMemoria):
+    """Simula a amostra liberada como abandonada entre o último caso e o `concluir`."""
+
+    def concluir(self, execucao_id, resumo):
+        self.liberar(execucao_id)
+        return False
+
+
+def test_amostra_liberada_apos_o_ultimo_caso_nao_emite_eval_fim():
+    registro = _RegistroLiberadoAoConcluir()
+    registro.criar("e1")
+
+    eventos = list(executor(registro).executar(job("juiz")))
+
+    assert "eval_fim" not in [e.tipo for e in eventos]
+    assert registro.execucoes["e1"]["status"] == "erro"
+    assert len(registro.execucoes["e1"]["casos"]) == 3
+
+
+def test_contexto_tem_n_do_sorteio_prompts_versionados_e_seed_do_juiz():
+    registro = registro_novo()
+
+    list(executor(registro).executar(job("juiz")))
+
+    contexto = registro.execucoes["e1"]["contexto"]
+    assert contexto["n"] == 3
+    assert contexto["prompts"] == {"juiz_resolucao": carregar_prompt("juiz_resolucao").versao}
+    assert contexto["seed"] == calibracao.SEED_DA_AMOSTRA
+
+
+def test_eval_fase_carrega_o_caso_id_do_caso_em_execucao():
+    registro = registro_novo()
+
+    eventos = list(executor(registro).executar(job("juiz")))
+
+    fases = [e for e in eventos if e.tipo == "eval_fase"]
+    ids_dos_casos = [c["id"] for c in registro.execucoes["e1"]["casos"]]
+    assert [f.dados["caso_id"] for f in fases] == ids_dos_casos
+
+
 def test_falha_no_sorteio_marca_a_execucao_e_sobe_para_o_worker():
     registro = registro_novo()
 
@@ -181,3 +223,12 @@ def test_caso_grande_demais_para_o_notify_vai_so_com_o_id():
 
     assert evento_do_caso(grande).dados == {"caso_id": "rag-001", "grande": True}
     assert evento_do_caso(pequeno).dados == {"caso": pequeno}
+
+
+def test_caso_estoura_o_limite_em_bytes_mesmo_cabendo_em_caracteres():
+    caso = {"id": "rag-003", "resposta": "ã" * (LIMITE_DO_AVISO // 2 + 100)}
+    texto = Evento(tipo="eval_caso", dados={"caso": caso}).model_dump_json()
+    assert len(texto) < LIMITE_DO_AVISO
+    assert len(texto.encode()) > LIMITE_DO_AVISO
+
+    assert evento_do_caso(caso).dados == {"caso_id": "rag-003", "grande": True}

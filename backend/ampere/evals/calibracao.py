@@ -22,6 +22,9 @@ from ampere.nucleo.config import Config
 
 PASTA_DADOS = Path(__file__).parent / "dados"
 PROMPTS_DO_JUIZ = ("juiz_resolucao",)
+# A seed padrão da divisão treino/dev/teste: a amostra ao vivo usa a mesma, para o few-shot
+# e o sorteio do teste virem da mesma divisão.
+SEED_DA_AMOSTRA = 0
 
 
 class Rotulo(BaseModel):
@@ -254,13 +257,15 @@ def resumo_amostra_juiz(casos: Sequence[dict]) -> dict:
     }
 
 
-def few_shot_do_treino(rotulos: Sequence[Rotulo] | None = None, *, seed: int = 0) -> list[Exemplo]:
+def few_shot_do_treino(
+    rotulos: Sequence[Rotulo] | None = None, *, seed: int = SEED_DA_AMOSTRA
+) -> list[Exemplo]:
     rotulos = list(rotulos) if rotulos is not None else carregar_rotulos()
     return [r.exemplo() for r in dividir(rotulos, seed=seed).treino]
 
 
 def sortear_amostra(
-    rng: random.Random, rotulos: Sequence[Rotulo] | None = None, *, seed: int = 0
+    rng: random.Random, rotulos: Sequence[Rotulo] | None = None, *, seed: int = SEED_DA_AMOSTRA
 ) -> list[Sorteado]:
     """Três respostas só do conjunto de teste (sortear um exemplo do few-shot seria colar na
     prova), com pelo menos uma aprovada e uma reprovada pelo humano."""

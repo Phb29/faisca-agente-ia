@@ -1,5 +1,6 @@
 """Embedders densos trocáveis por configuração: MiniLM local, OpenAI, ou falso para testes."""
 
+from functools import cache
 from typing import Any, Protocol
 
 from ampere.nucleo.config import Config
@@ -7,6 +8,15 @@ from ampere.nucleo.falsos import embed_falso
 
 MODELO_MINILM = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 MODELO_OPENAI = "text-embedding-3-small"
+
+
+@cache
+def _modelo_minilm() -> Any:
+    """Uma só cópia do modelo por processo: o retriever, a Memória Semântica e o eval do
+    agente criam cada um seu `EmbedderMiniLM`, mas todos carregam o mesmo fastembed."""
+    from fastembed import TextEmbedding
+
+    return TextEmbedding(MODELO_MINILM)
 
 
 class Embedder(Protocol):
@@ -27,9 +37,7 @@ class EmbedderMiniLM:
 
     def _carregar(self) -> Any:
         if self._modelo is None:
-            from fastembed import TextEmbedding
-
-            self._modelo = TextEmbedding(MODELO_MINILM)
+            self._modelo = _modelo_minilm()
         return self._modelo
 
     def embed(self, textos: list[str]) -> list[list[float]]:
