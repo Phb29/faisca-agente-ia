@@ -191,7 +191,7 @@ class RegistroEmMemoria:
 
     def liberar(self, execucao_id: str) -> None:
         """O que `liberar_abandonadas` faz com uma amostra parada."""
-        self.execucoes[execucao_id].update(status="erro", erro=TEMPO_ESGOTADO)
+        self._mudar(execucao_id, ("pendente", "rodando"), status="erro", erro=TEMPO_ESGOTADO)
 
     def marcar_rodando(self, execucao_id: str, contexto: dict) -> bool:
         return self._mudar(execucao_id, ("pendente",), status="rodando", contexto=contexto)

@@ -130,10 +130,26 @@ def test_pendente_so_e_liberada_depois_de_dez_minutos(banco):
         assert liberar_abandonadas(conn) == [execucao_id]
 
 
+def test_rodando_conta_os_cinco_minutos_de_quando_comecou(banco):
+    with conectar(banco, autocommit=True) as conn:
+        execucao_id = criar_amostra(conn, "agente")
+        marcar_rodando(conn, execucao_id, {})
+        conn.execute(
+            "UPDATE execucoes_de_eval SET criada_em = now() - interval '11 minutes', "
+            "iniciada_em = now() - interval '4 minutes' WHERE id = %s",
+            (execucao_id,),
+        )
+        assert liberar_abandonadas(conn) == []
+
+
 def test_completa_nunca_e_liberada(banco):
     with conectar(banco, autocommit=True) as conn:
         salvar_completa(conn, "rag", contexto={}, resumo={}, casos=[])
-        conn.execute("UPDATE execucoes_de_eval SET criada_em = now() - interval '1 day'")
+        # Mesmo num status e numa idade que liberariam uma amostra.
+        conn.execute(
+            "UPDATE execucoes_de_eval SET status = 'rodando', "
+            "criada_em = now() - interval '1 day', iniciada_em = now() - interval '1 day'"
+        )
         assert liberar_abandonadas(conn) == []
 
 
