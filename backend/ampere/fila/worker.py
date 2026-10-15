@@ -1,4 +1,4 @@
-"""O worker: reserva um job, roda o executor e publica cada evento no canal da Conversa.
+"""O worker: reserva um job, roda o executor e publica cada evento no canal do job.
 
 A mensagem final e a Aprovação Pendente são gravadas ANTES do NOTIFY, para que quem receber
 o evento já encontre o dado no banco. Sem job, o worker dorme em `LISTEN fila_de_jobs` e
@@ -31,15 +31,15 @@ def processar_um_job(conn: psycopg.Connection, executor: Executor) -> bool:
     job = pegar_proximo_job(conn)
     if job is None:
         return False
-    log.info("job %s (%s) da Conversa %s", job.id, job.tipo, job.conversa_id)
+    log.info("job %s (%s) no canal %s", job.id, job.tipo, job.canal)
     try:
         for evento in executor.executar(job):
-            publicar(conn, job.conversa_id, _persistir(conn, job, evento))
+            publicar(conn, job.canal, _persistir(conn, job, evento))
     except Exception as exc:  # noqa: BLE001 - qualquer falha vira erro do job, não do worker
         erro = "".join(traceback.format_exception_only(exc)).strip()
         log.exception("job %s falhou", job.id)
         concluir_job(conn, job.id, erro=erro)
-        publicar(conn, job.conversa_id, Evento(tipo="error", dados={"mensagem": erro}))
+        publicar(conn, job.canal, Evento(tipo="error", dados={"mensagem": erro}))
     else:
         concluir_job(conn, job.id)
     return True

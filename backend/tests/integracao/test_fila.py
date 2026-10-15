@@ -101,7 +101,7 @@ def test_message_done_grava_mensagem_do_assistente_antes_de_publicar(banco):
             Evento(tipo="message_done", dados={"conteudo": "olá, tudo bem?"}),
         ]
 
-    recebidos = _capturar_eventos(banco, conversa_id)
+    recebidos = _capturar_eventos(banco, canal(conversa_id))
     assert _processar(banco, ExecutorFalso(eventos_do_job)) is True
 
     eventos = recebidos()
@@ -135,7 +135,7 @@ def test_approval_required_cria_aprovacao_pendente_e_muda_status_da_conversa(ban
             )
         ]
     )
-    recebidos = _capturar_eventos(banco, conversa_id)
+    recebidos = _capturar_eventos(banco, canal(conversa_id))
     assert _processar(banco, executor) is True
 
     eventos = recebidos()
@@ -159,7 +159,7 @@ def test_executor_que_falha_marca_job_com_erro_e_publica_error(banco):
     def explode(job):
         raise RuntimeError("o grafo quebrou")
 
-    recebidos = _capturar_eventos(banco, conversa_id)
+    recebidos = _capturar_eventos(banco, canal(conversa_id))
     assert _processar(banco, ExecutorFalso(explode)) is True
 
     eventos = recebidos()
@@ -177,7 +177,7 @@ def test_escutar_recebe_eventos_publicados_via_notify(banco):
         conn.commit()
 
     async def cenario():
-        escuta = escutar(banco, conversa_id)
+        escuta = escutar(banco, canal(conversa_id))
 
         async def ler():
             recebidos = []
@@ -191,8 +191,8 @@ def test_escutar_recebe_eventos_publicados_via_notify(banco):
         tarefa = asyncio.create_task(ler())
         await asyncio.sleep(0.2)
         with conectar(banco, autocommit=True) as conn:
-            publicar(conn, conversa_id, Evento(tipo="token", dados={"texto": "a"}))
-            publicar(conn, conversa_id, Evento(tipo="token", dados={"texto": "b"}))
+            publicar(conn, canal(conversa_id), Evento(tipo="token", dados={"texto": "a"}))
+            publicar(conn, canal(conversa_id), Evento(tipo="token", dados={"texto": "b"}))
         return await asyncio.wait_for(tarefa, timeout=5)
 
     recebidos = asyncio.run(cenario())
@@ -325,16 +325,29 @@ def test_banco_recusa_job_do_chat_sem_conversa(banco):
             conn.execute("INSERT INTO fila_de_jobs (tipo, payload) VALUES ('mensagem', '{}')")
 
 
+def test_worker_publica_os_eventos_no_canal_do_job(banco):
+    with conectar(banco, autocommit=True) as conn:
+        enfileirar_sem_conversa(conn, tipo="eval", canal="avaliacao_teste", payload={})
+
+    recebidos = _capturar_eventos(banco, "avaliacao_teste")
+    executor = ExecutorFalso([Evento(tipo="eval_fim", dados={"resumo": {"n": 3}})])
+    assert _processar(banco, executor) is True
+
+    eventos = recebidos()
+    assert [e.tipo for e in eventos] == ["eval_fim"]
+    assert eventos[0].dados == {"resumo": {"n": 3}}
+
+
 def _processar(conn_string: str, executor) -> bool:
     with conectar(conn_string, autocommit=True) as conn:
         return processar_um_job(conn, executor)
 
 
-def _capturar_eventos(conn_string: str, conversa_id: str):
+def _capturar_eventos(conn_string: str, nome_do_canal: str):
     """Abre uma conexão síncrona com LISTEN antes do worker rodar e devolve uma função
     que drena as notificações recebidas até então."""
     conn = conectar(conn_string, autocommit=True)
-    conn.execute(f"LISTEN {canal(conversa_id)}")
+    conn.execute(f"LISTEN {nome_do_canal}")
 
     def drenar() -> list[Evento]:
         eventos = [Evento.model_validate_json(n.payload) for n in conn.notifies(timeout=1.0)]

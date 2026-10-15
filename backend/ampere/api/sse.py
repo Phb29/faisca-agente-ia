@@ -17,7 +17,7 @@ from starlette.concurrency import run_in_threadpool
 from ampere.api.cliente import conversa_do_cliente
 from ampere.api.dependencias import ClienteId, Configuracao, Pool
 from ampere.conversas.conversas import Mensagem, ultima_mensagem_do_assistente
-from ampere.fila.eventos import Escuta
+from ampere.fila.eventos import Escuta, canal
 
 router = APIRouter()
 
@@ -36,7 +36,7 @@ async def stream(config: Configuracao, pool: Pool, cliente_id: ClienteId, conver
 
     # O LISTEN acontece antes da resposta: quando o front recebe os headers, nenhum evento
     # publicado dali em diante se perde.
-    escuta = await Escuta(config.database_url, conversa_id).abrir()
+    escuta = await Escuta(config.database_url, canal(conversa_id)).abrir()
 
     async def eventos():
         try:
