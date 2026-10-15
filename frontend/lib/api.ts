@@ -108,6 +108,8 @@ export class ErroDaApi extends Error {
   constructor(
     readonly status: number,
     mensagem: string,
+    /** O corpo JSON da resposta de erro, quando houver (o 409 da amostra traz o id dela). */
+    readonly corpo: unknown = null,
   ) {
     super(mensagem);
     this.name = "ErroDaApi";
@@ -136,20 +138,22 @@ async function requisitar<T>(caminho: string, { metodo = "GET", cabecalhos, corp
 
   if (!resposta.ok) {
     let detalhe = resposta.statusText;
+    let corpo: unknown = null;
     try {
-      const json = await resposta.json();
-      detalhe = typeof json?.detail === "string" ? json.detail : JSON.stringify(json);
+      corpo = await resposta.json();
+      const json = corpo as { detail?: unknown } | null;
+      detalhe = typeof json?.detail === "string" ? json.detail : JSON.stringify(corpo);
     } catch {
       // corpo sem JSON: fica o statusText
     }
-    throw new ErroDaApi(resposta.status, detalhe || `Erro ${resposta.status}`);
+    throw new ErroDaApi(resposta.status, detalhe || `Erro ${resposta.status}`, corpo);
   }
 
   return resposta.status === 204 ? (undefined as T) : ((await resposta.json()) as T);
 }
 
 const doCliente = (clienteId: string) => ({ "X-Cliente-Id": clienteId });
-const doAtendente = (token: string) => ({ "X-Atendente-Token": token });
+export const doAtendente = (token: string) => ({ "X-Atendente-Token": token });
 const segmento = encodeURIComponent;
 
 // ---------- Rotas do Cliente ----------
@@ -222,3 +226,154 @@ export const salvarMemoriaProcedural = (token: string, clienteId: string, texto:
     cabecalhos: doAtendente(token),
     corpo: { texto },
   });
+
+// ---------- Avaliação ----------
+
+export type NomeDoEval = "rag" | "agente" | "juiz";
+export type ModoDaExecucao = "completa" | "amostra";
+export type StatusDaExecucao = "pendente" | "rodando" | "concluida" | "erro";
+export type Veredito = { aprovada: boolean; critica: string };
+export type Sorteado = { id: string; texto: string; grupo: string };
+
+export type ContextoDaExecucao = {
+  modelos_falsos?: boolean;
+  gerador?: string;
+  juiz?: string;
+  trabalhador?: string;
+  prompts?: Record<string, string>;
+  n?: number;
+  variante?: string;
+  seed?: number;
+  sorteados?: Sorteado[];
+};
+
+/** O que todo caso tem, de qualquer eval. Um caso que falhou na amostra tem só isto. */
+export type CasoBase = {
+  id: string;
+  texto: string;
+  grupo: string;
+  duracao_s: number;
+  erro: string | null;
+};
+
+export type CasoRag = CasoBase & {
+  pergunta: string;
+  origem: string;
+  documento_esperado: string;
+  recuperados: string[];
+  posicao: number | null;
+  filtro: Record<string, string> | null;
+  resposta: string | null;
+  fidelidade: Veredito | null;
+  relevancia: Veredito | null;
+};
+
+export type Tripla<T> = { intencao: T; acao: T; desfecho: T };
+
+export type CasoAgente = CasoBase & {
+  mensagem: string;
+  esperado: Tripla<string | null>;
+  obtido: Tripla<string>;
+  ok: Tripla<boolean>;
+  bloqueado: boolean;
+  caminho: string[];
+  resposta: string;
+  juiz: Veredito | null;
+};
+
+export type CasoJuiz = CasoBase & {
+  conjunto: "dev" | "teste";
+  mensagem: string;
+  resposta: string;
+  humano: Veredito;
+  juiz: Veredito;
+  concorda: boolean;
+};
+
+export type Caso = CasoRag | CasoAgente | CasoJuiz | CasoBase;
+
+export type VarianteRag = {
+  nome: string;
+  embedder: string;
+  chunker: string;
+  reranker: string;
+  self_querying: boolean;
+  recall_at_5: number;
+  mrr: number;
+};
+
+export type ResumoRag = {
+  variante_no_ar: string;
+  recall_at_5: number | null;
+  mrr: number | null;
+  fidelidade: number | null;
+  relevancia: number | null;
+  n: number;
+  variantes: VarianteRag[];
+};
+
+export type ResumoAgente = {
+  n: number;
+  erros: number;
+  intencao: number;
+  acao: number;
+  desfecho: number;
+  tudo: number;
+  juiz_aprovadas: number;
+  julgados: number;
+};
+
+export type Matriz = { vp: number; fn: number; vn: number; fp: number };
+export type AvaliacaoDoConjunto = { matriz: Matriz; tpr: number; tnr: number; concordancia: number };
+
+export type ResumoCalibracao = {
+  tamanhos: { treino: number; dev: number; teste: number };
+  dev: AvaliacaoDoConjunto;
+  teste: AvaliacaoDoConjunto;
+  taxa_observada: number;
+  taxa_corrigida: number;
+  intervalo: [number, number];
+};
+
+export type ResumoAmostraJuiz = { n: number; concordaram: number; erros: number };
+
+export type Execucao = {
+  id: string;
+  eval: NomeDoEval;
+  modo: ModoDaExecucao;
+  status: StatusDaExecucao;
+  contexto: ContextoDaExecucao;
+  resumo: unknown;
+  erro: string | null;
+  criada_em: string;
+  iniciada_em: string | null;
+  concluida_em: string | null;
+  /** Só vem em `lerExecucao` e na foto do stream; as listas não trazem os casos. */
+  casos?: Caso[];
+};
+
+export type AmostraDisparada = { execucao_id: string };
+export type AmostraOcupada = { detail: string; execucao_id: string | null; eval: NomeDoEval | null };
+
+/** Até 100: cada amostra entra na lista, e a completa não pode sumir no meio da aula. */
+export const listarExecucoes = (token: string, nome: NomeDoEval) =>
+  requisitar<Execucao[]>(`/avaliacao/${nome}/execucoes?limite=100`, {
+    cabecalhos: doAtendente(token),
+  });
+
+export const lerExecucao = (token: string, execucaoId: string) =>
+  requisitar<Execucao>(`/avaliacao/execucoes/${segmento(execucaoId)}`, {
+    cabecalhos: doAtendente(token),
+  });
+
+export const lerAmostraEmAndamento = (token: string) =>
+  requisitar<Execucao | null>("/avaliacao/amostra", { cabecalhos: doAtendente(token) });
+
+export const rodarAmostra = (token: string, nome: NomeDoEval) =>
+  requisitar<AmostraDisparada>(`/avaliacao/${nome}/amostra`, {
+    metodo: "POST",
+    cabecalhos: doAtendente(token),
+  });
+
+export const urlDoStreamDaExecucao = (execucaoId: string) =>
+  `${API_URL}/avaliacao/execucoes/${segmento(execucaoId)}/stream`;
