@@ -40,7 +40,7 @@ export function AbaJuiz({ execucao, aoAbrirCaso }: Props) {
       <Julgamentos
         id="titulo-desacordos"
         titulo="Desacordos"
-        descricao="Onde juiz e humano discordaram, lado a lado. Clique para ver a resposta inteira."
+        descricao="Onde juiz e humano discordaram, lado a lado. Clique para ver o caso completo."
         vazio="Juiz e humano concordaram em tudo."
         casos={desacordos}
         aoAbrirCaso={aoAbrirCaso}
@@ -152,7 +152,11 @@ function AmostraDoJuiz({
             sufixo: resumo ? `/${resumo.n}` : undefined,
             detalhe: "respostas em que o juiz disse o mesmo que o humano",
           },
-          { rotulo: "Falharam", valor: String(resumo?.erros ?? 0), detalhe: "casos que não chegaram ao fim" },
+          {
+            rotulo: "Falharam",
+            valor: String(resumo?.erros ?? casos.filter(temErro).length),
+            detalhe: "casos que não chegaram ao fim",
+          },
           { rotulo: "Conjunto", valor: "teste", detalhe: "nunca um exemplo do prompt" },
         ]}
       />

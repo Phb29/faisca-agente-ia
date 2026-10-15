@@ -29,19 +29,19 @@ export function AbaAgente({ execucao, aoAbrirCaso }: Props) {
           {
             rotulo: "Intenção",
             valor: porcento(resumo?.intencao),
-            sufixo: "%",
+            sufixo: resumo ? "%" : undefined,
             detalhe: `${certos("intencao")} de ${validos.length} no Roteador`,
           },
           {
             rotulo: "Ação",
             valor: porcento(resumo?.acao),
-            sufixo: "%",
+            sufixo: resumo ? "%" : undefined,
             detalhe: `${certos("acao")} de ${validos.length} escolheram a Ação certa`,
           },
           {
             rotulo: "Desfecho",
             valor: porcento(resumo?.desfecho),
-            sufixo: "%",
+            sufixo: resumo ? "%" : undefined,
             detalhe: `${certos("desfecho")} de ${validos.length} terminaram como esperado`,
           },
           {
@@ -60,53 +60,71 @@ export function AbaAgente({ execucao, aoAbrirCaso }: Props) {
   );
 }
 
+/** Os grupos na ordem combinada, com qualquer grupo fora de `ORDEM_DOS_GRUPOS` ao final,
+ * na ordem em que aparece nos casos (nenhum grupo some por não estar previsto). */
+function agruparPorGrupo(casos: Caso[]): { grupo: string; lista: Caso[] }[] {
+  const previstos = new Set<string>(ORDEM_DOS_GRUPOS);
+  const extras: string[] = [];
+  for (const caso of casos) {
+    if (!previstos.has(caso.grupo) && !extras.includes(caso.grupo)) extras.push(caso.grupo);
+  }
+  return [...ORDEM_DOS_GRUPOS, ...extras]
+    .map((grupo) => ({ grupo, lista: casos.filter((caso) => caso.grupo === grupo) }))
+    .filter(({ lista }) => lista.length > 0);
+}
+
 function Cenarios({ casos, aoAbrirCaso }: { casos: Caso[]; aoAbrirCaso: (caso: Caso) => void }) {
-  const grupos = ORDEM_DOS_GRUPOS.map((grupo) => ({
-    grupo,
-    lista: casos.filter((caso) => caso.grupo === grupo),
-  })).filter(({ lista }) => lista.length > 0);
+  const grupos = agruparPorGrupo(casos);
 
   return (
     <Quadro
       id="titulo-cenarios"
       titulo="Cenários"
       descricao="Um quadrado por conferência. Vermelho com ✗ é onde errou."
-      extra={
-        <span aria-hidden className="flex shrink-0 gap-1.5 font-mono text-[9px] text-muted">
-          {["INT", "AÇÃO", "DESF", "JUIZ"].map((rotulo) => (
-            <span key={rotulo} className="w-6 text-center">
-              {rotulo}
-            </span>
-          ))}
-        </span>
-      }
     >
-      <div className="mt-2 max-h-[520px] overflow-y-auto pr-1">
-        {grupos.map(({ grupo, lista }) => (
-          <div key={grupo}>
-            <p className="sobretitulo pt-3 pb-1">
-              {rotuloDoGrupo(grupo)} · {lista.length}
-            </p>
-            <ul className="divide-y divide-line">
-              {lista.map((caso) => (
-                <li key={caso.id}>
-                  <button
-                    type="button"
-                    onClick={() => aoAbrirCaso(caso)}
-                    className="flex w-full items-center gap-3 rounded-md px-1 py-2 text-left text-[13px] transition-colors hover:bg-surface-2"
-                  >
-                    <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[10.5px] text-ink-2 ring-1 ring-line ring-inset">
-                      {caso.id}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-ink-2">{caso.texto}</span>
-                    <QuadrinhosDoAgente caso={caso} />
-                  </button>
-                </li>
+      {grupos.length === 0 ? (
+        <p className="mt-6 text-[13px] text-muted">Nenhum cenário nesta execução.</p>
+      ) : (
+        <div className="mt-2 max-h-[520px] overflow-y-auto pr-1">
+          <div
+            aria-hidden
+            className="sticky top-0 z-10 flex items-center gap-3 bg-surface px-1 py-1 font-mono text-[9px] text-muted"
+          >
+            <span className="min-w-0 flex-1" />
+            <span className="flex shrink-0 gap-1.5">
+              {["INT", "AÇÃO", "DESF", "JUIZ"].map((rotulo) => (
+                <span key={rotulo} className="w-6 text-center">
+                  {rotulo}
+                </span>
               ))}
-            </ul>
+            </span>
           </div>
-        ))}
-      </div>
+          {grupos.map(({ grupo, lista }) => (
+            <div key={grupo}>
+              <p className="sobretitulo pt-3 pb-1">
+                {rotuloDoGrupo(grupo)} · {lista.length}
+              </p>
+              <ul className="divide-y divide-line">
+                {lista.map((caso) => (
+                  <li key={caso.id}>
+                    <button
+                      type="button"
+                      onClick={() => aoAbrirCaso(caso)}
+                      className="flex w-full items-center gap-3 rounded-md px-1 py-2 text-left text-[13px] transition-colors hover:bg-surface-2"
+                    >
+                      <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[10.5px] text-ink-2 ring-1 ring-line ring-inset">
+                        {caso.id}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-ink-2">{caso.texto}</span>
+                      <QuadrinhosDoAgente caso={caso} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
     </Quadro>
   );
 }

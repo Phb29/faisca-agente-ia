@@ -11,6 +11,7 @@ import { Quadro } from "./Quadro";
 
 const VARIANTES_VISIVEIS = 6;
 const SEM_GERACAO = "a geração não rodou nesta execução";
+const PAROU_COM_ERRO = "a execução parou com erro";
 
 type Props = { execucao: Execucao; aoAbrirCaso: (caso: Caso) => void };
 
@@ -20,6 +21,7 @@ export function AbaBusca({ execucao, aoAbrirCaso }: Props) {
   const validos = casos.filter((caso) => !temErro(caso)) as CasoRag[];
   const achadas = validos.filter((caso) => caso.posicao !== null).length;
   const semGeracao = resumo?.fidelidade == null;
+  const fraseSemGeracao = execucao.status === "erro" || resumo == null ? PAROU_COM_ERRO : SEM_GERACAO;
 
   return (
     <div className="animate-surgir space-y-4 [animation-delay:60ms]">
@@ -35,13 +37,13 @@ export function AbaBusca({ execucao, aoAbrirCaso }: Props) {
             rotulo: "Fidelidade",
             valor: porcento(resumo?.fidelidade),
             sufixo: semGeracao ? undefined : "%",
-            detalhe: semGeracao ? SEM_GERACAO : "a resposta se apoia nos trechos",
+            detalhe: semGeracao ? fraseSemGeracao : "a resposta se apoia nos trechos",
           },
           {
             rotulo: "Relevância",
             valor: porcento(resumo?.relevancia),
             sufixo: semGeracao ? undefined : "%",
-            detalhe: semGeracao ? SEM_GERACAO : "responde o que foi perguntado",
+            detalhe: semGeracao ? fraseSemGeracao : "responde o que foi perguntado",
           },
         ]}
       />
@@ -58,7 +60,9 @@ function Variantes({ resumo }: { resumo: ResumoRag | null }) {
   const variantes = [...(resumo?.variantes ?? [])].sort(
     (a, b) => b.recall_at_5 - a.recall_at_5 || b.mrr - a.mrr,
   );
-  const visiveis = todas ? variantes : variantes.slice(0, VARIANTES_VISIVEIS);
+  const topo = variantes.slice(0, VARIANTES_VISIVEIS);
+  const doAr = variantes.find((variante) => variante.nome === resumo?.variante_no_ar);
+  const visiveis = todas ? variantes : doAr && !topo.includes(doAr) ? [...topo, doAr] : topo;
 
   return (
     <Quadro
@@ -73,7 +77,7 @@ function Variantes({ resumo }: { resumo: ResumoRag | null }) {
         </p>
       ) : (
         <>
-          <div className="mt-4 grid grid-cols-[minmax(0,230px)_1fr_48px_48px] gap-x-3 border-b border-line pb-2 font-mono text-[10px] tracking-[0.08em] text-muted uppercase">
+          <div className="mt-4 grid grid-cols-[minmax(0,230px)_minmax(64px,1fr)_48px_48px] gap-x-3 border-b border-line pb-2 font-mono text-[10px] tracking-[0.08em] text-muted uppercase">
             <span>Variante</span>
             <span>Recall@5</span>
             <span className="text-right">R@5</span>
@@ -92,6 +96,7 @@ function Variantes({ resumo }: { resumo: ResumoRag | null }) {
             <button
               type="button"
               onClick={() => setTodas(!todas)}
+              aria-expanded={todas}
               className="mt-3 inline-flex items-center gap-1 text-[12.5px] text-muted transition-colors hover:text-ink"
             >
               {todas ? "mostrar menos" : `+ ${variantes.length - VARIANTES_VISIVEIS} variantes`}
@@ -111,14 +116,16 @@ function LinhaDaVariante({ variante, noAr }: { variante: VarianteRag; noAr: bool
     variante.reranker,
     variante.self_querying ? "sq" : "sem sq",
   ];
+  const rotulo = `${variante.nome}: Recall@5 ${decimal(variante.recall_at_5)}, MRR ${decimal(variante.mrr)}${noAr ? ", no ar" : ""}`;
   return (
     <li
+      aria-label={rotulo}
       className={cx(
-        "grid grid-cols-[minmax(0,230px)_1fr_48px_48px] items-center gap-x-3 rounded-lg py-1.5 text-[12.5px]",
+        "grid grid-cols-[minmax(0,230px)_minmax(64px,1fr)_48px_48px] items-center gap-x-3 rounded-lg py-1.5 text-[12.5px]",
         noAr && "-mx-2 bg-volt/15 px-2",
       )}
     >
-      <span className="flex min-w-0 gap-1 overflow-hidden">
+      <span aria-hidden className="flex min-w-0 gap-1 overflow-hidden">
         {pedacos.map((pedaco, indice) => (
           <span
             key={indice}
@@ -127,7 +134,6 @@ function LinhaDaVariante({ variante, noAr }: { variante: VarianteRag; noAr: bool
             {pedaco}
           </span>
         ))}
-        {noAr && <span className="sr-only">(no ar)</span>}
       </span>
       <span aria-hidden className="h-2.5 overflow-hidden rounded bg-canvas-2">
         <span
@@ -135,8 +141,12 @@ function LinhaDaVariante({ variante, noAr }: { variante: VarianteRag; noAr: bool
           style={{ width: `${Math.round(variante.recall_at_5 * 100)}%` }}
         />
       </span>
-      <span className="text-right font-semibold tabular-nums">{decimal(variante.recall_at_5)}</span>
-      <span className="text-right text-muted tabular-nums">{decimal(variante.mrr)}</span>
+      <span aria-hidden className="text-right font-semibold tabular-nums">
+        {decimal(variante.recall_at_5)}
+      </span>
+      <span aria-hidden className="text-right text-muted tabular-nums">
+        {decimal(variante.mrr)}
+      </span>
     </li>
   );
 }
@@ -156,25 +166,29 @@ function Perguntas({ casos, aoAbrirCaso }: { casos: Caso[]; aoAbrirCaso: (caso: 
       titulo="Perguntas"
       descricao="Onde o documento certo apareceu, na variante no ar. As piores primeiro; clique para ver o detalhe."
     >
-      <ul className="mt-3 max-h-[480px] divide-y divide-line overflow-y-auto pr-1">
-        {ordenados.map((caso) => (
-          <li key={caso.id}>
-            <button
-              type="button"
-              onClick={() => aoAbrirCaso(caso)}
-              className="flex w-full items-center gap-3 rounded-md px-1 py-2.5 text-left text-[13px] transition-colors hover:bg-surface-2"
-            >
-              {caso.grupo === "adversarial" && (
-                <Pilula tom="info" className="font-mono text-[9.5px] tracking-[0.06em] uppercase">
-                  adversarial
-                </Pilula>
-              )}
-              <span className="min-w-0 flex-1 truncate text-ink-2">{caso.texto}</span>
-              <Posicao caso={caso} />
-            </button>
-          </li>
-        ))}
-      </ul>
+      {ordenados.length === 0 ? (
+        <p className="mt-6 text-[13px] text-muted">Nenhuma pergunta nesta execução.</p>
+      ) : (
+        <ul className="mt-3 max-h-[480px] divide-y divide-line overflow-y-auto pr-1">
+          {ordenados.map((caso) => (
+            <li key={caso.id}>
+              <button
+                type="button"
+                onClick={() => aoAbrirCaso(caso)}
+                className="flex w-full items-center gap-3 rounded-md px-1 py-2.5 text-left text-[13px] transition-colors hover:bg-surface-2"
+              >
+                {caso.grupo === "adversarial" && (
+                  <Pilula tom="info" className="font-mono text-[9.5px] tracking-[0.06em] uppercase">
+                    adversarial
+                  </Pilula>
+                )}
+                <span className="min-w-0 flex-1 truncate text-ink-2">{caso.texto}</span>
+                <Posicao caso={caso} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </Quadro>
   );
 }
