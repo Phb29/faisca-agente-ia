@@ -3,9 +3,14 @@
 Uma variante é (embedder, chunker, reranker, self-querying). Retrieval é barato e roda em
 todas as coleções que existem no Qdrant; a geração usa o gerador e o juiz e por isso roda
 só na variante configurada no .env.
+
+Além das tabelas, `rodar` devolve o relatório que o CLI grava como execução completa, e
+`caso_ao_vivo` roda uma pergunta da amostra ao vivo (ver `ampere.evals.ao_vivo`).
 """
 
 import csv
+import random
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,6 +22,14 @@ from pydantic import BaseModel
 
 from ampere.evals.juiz import Veredito, julgar_fidelidade, julgar_relevancia
 from ampere.evals.metricas import mrr, recall_at_k
+from ampere.evals.relatorio import (
+    PassosDoCaso,
+    Relatorio,
+    Sorteado,
+    contexto_base,
+    media,
+    sem_erro,
+)
 from ampere.nucleo.config import Config
 from ampere.prompts import carregar_prompt
 from ampere.rag.busca import Retriever, formatar_chunks
@@ -24,6 +37,7 @@ from ampere.rag.chunkers import Chunk
 
 PASTA_DADOS = Path(__file__).parent / "dados"
 NOME_DATASET = "golden_rag"
+PROMPTS_DO_RAG = ("gerar_resposta", "self_querying", "juiz_fidelidade", "juiz_relevancia")
 
 
 class LinhaRag(BaseModel):
@@ -57,6 +71,8 @@ class RetrievalDaPergunta:
     recuperados: list[str]
     recall: float
     rr: float
+    filtro: dict | None = None
+    duracao_s: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -67,26 +83,39 @@ class ResultadoRetrieval:
     por_pergunta: list[RetrievalDaPergunta] = field(default_factory=list)
 
 
+def _filtro_usado(retriever: Retriever) -> dict | None:
+    """O filtro que o self-querying gerou na última busca (só o `RetrieverQdrant` guarda)."""
+    filtro = getattr(retriever, "ultimo_filtro", None)
+    return filtro.model_dump(mode="json", exclude_none=True) if filtro is not None else None
+
+
+def buscar_pergunta(
+    retriever: Retriever, linha: LinhaRag, *, k: int = 5
+) -> tuple[RetrievalDaPergunta, list[Chunk]]:
+    """Uma busca: as métricas da pergunta e os trechos, para a geração usar sem buscar de novo."""
+    inicio = time.perf_counter()
+    chunks = retriever.buscar(linha.pergunta, k=k)
+    recuperados = documentos_unicos(chunks)
+    retrieval = RetrievalDaPergunta(
+        pergunta=linha.pergunta,
+        documento_esperado=linha.documento_esperado,
+        recuperados=recuperados,
+        recall=recall_at_k(recuperados, linha.documento_esperado, k=k),
+        rr=mrr(recuperados, linha.documento_esperado),
+        filtro=_filtro_usado(retriever),
+        duracao_s=time.perf_counter() - inicio,
+    )
+    return retrieval, chunks
+
+
 def avaliar_retrieval(
     retriever: Retriever, golden: Sequence[LinhaRag], *, k: int = 5
 ) -> ResultadoRetrieval:
-    por_pergunta = []
-    for linha in golden:
-        recuperados = documentos_unicos(retriever.buscar(linha.pergunta, k=k))
-        por_pergunta.append(
-            RetrievalDaPergunta(
-                pergunta=linha.pergunta,
-                documento_esperado=linha.documento_esperado,
-                recuperados=recuperados,
-                recall=recall_at_k(recuperados, linha.documento_esperado, k=k),
-                rr=mrr(recuperados, linha.documento_esperado),
-            )
-        )
-    n = len(por_pergunta)
+    por_pergunta = [buscar_pergunta(retriever, linha, k=k)[0] for linha in golden]
     return ResultadoRetrieval(
         recall_at_5=_media([r.recall for r in por_pergunta]),
         mrr=_media([r.rr for r in por_pergunta]),
-        n=n,
+        n=len(por_pergunta),
         por_pergunta=por_pergunta,
     )
 
@@ -100,6 +129,7 @@ class VereditoDaGeracao:
     resposta: str
     fidelidade: Veredito
     relevancia: Veredito
+    duracao_s: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -126,6 +156,26 @@ def gerar_resposta(gerador: BaseChatModel, pergunta: str, chunks: Sequence[Chunk
     return str(resposta.content)
 
 
+def julgar_geracao(
+    juiz: BaseChatModel,
+    linha: LinhaRag,
+    chunks: Sequence[Chunk],
+    resposta: str,
+    *,
+    inicio: float,
+) -> VereditoDaGeracao:
+    """Os dois vereditos do juiz sobre uma resposta; `inicio` é quando a geração começou."""
+    return VereditoDaGeracao(
+        pergunta=linha.pergunta,
+        resposta=resposta,
+        fidelidade=julgar_fidelidade(
+            juiz, pergunta=linha.pergunta, contexto=[c.texto for c in chunks], resposta=resposta
+        ),
+        relevancia=julgar_relevancia(juiz, pergunta=linha.pergunta, resposta=resposta),
+        duracao_s=time.perf_counter() - inicio,
+    )
+
+
 def avaliar_geracao(
     gerador: BaseChatModel,
     juiz: BaseChatModel,
@@ -137,26 +187,93 @@ def avaliar_geracao(
     vereditos = []
     for linha in list(golden)[:amostra]:
         chunks = retriever.buscar(linha.pergunta, k=5)
+        inicio = time.perf_counter()
         resposta = gerar_resposta(gerador, linha.pergunta, chunks)
-        vereditos.append(
-            VereditoDaGeracao(
-                pergunta=linha.pergunta,
-                resposta=resposta,
-                fidelidade=julgar_fidelidade(
-                    juiz,
-                    pergunta=linha.pergunta,
-                    contexto=[c.texto for c in chunks],
-                    resposta=resposta,
-                ),
-                relevancia=julgar_relevancia(juiz, pergunta=linha.pergunta, resposta=resposta),
-            )
-        )
+        vereditos.append(julgar_geracao(juiz, linha, chunks, resposta, inicio=inicio))
     return ResultadoGeracao(
         fidelidade=_media([float(v.fidelidade.aprovada) for v in vereditos]),
         relevancia=_media([float(v.relevancia.aprovada) for v in vereditos]),
         n=len(vereditos),
         vereditos=vereditos,
     )
+
+
+# --- relatório e amostra ao vivo ------------------------------------------------------------
+
+
+def id_da_pergunta(indice: int) -> str:
+    """Id estável de uma pergunta: a posição no CSV (o mesmo que vai para o Langfuse)."""
+    return f"rag-{indice:03d}"
+
+
+def caso_rag(
+    caso_id: str,
+    linha: LinhaRag,
+    retrieval: RetrievalDaPergunta,
+    geracao: VereditoDaGeracao | None,
+) -> dict:
+    top = retrieval.recuperados[:5]
+    posicao = top.index(linha.documento_esperado) + 1 if linha.documento_esperado in top else None
+    return {
+        "id": caso_id,
+        "texto": linha.pergunta,
+        "grupo": linha.origem,
+        "pergunta": linha.pergunta,
+        "origem": linha.origem,
+        "documento_esperado": linha.documento_esperado,
+        "recuperados": top,
+        "posicao": posicao,
+        "filtro": retrieval.filtro,
+        "resposta": geracao.resposta if geracao else None,
+        "fidelidade": geracao.fidelidade.model_dump() if geracao else None,
+        "relevancia": geracao.relevancia.model_dump() if geracao else None,
+        "duracao_s": round(retrieval.duracao_s + (geracao.duracao_s if geracao else 0.0), 2),
+        "erro": None,
+    }
+
+
+def resumo_rag(variante_no_ar: str, casos: Sequence[dict], variantes: Sequence[dict]) -> dict:
+    """Números de destaque da variante no ar, contados sobre os casos sem erro."""
+    validos = sem_erro(casos)
+    julgados = [c for c in validos if c["fidelidade"] is not None]
+    return {
+        "variante_no_ar": variante_no_ar,
+        "recall_at_5": media([1.0 if c["posicao"] else 0.0 for c in validos]),
+        "mrr": media([1 / c["posicao"] if c["posicao"] else 0.0 for c in validos]),
+        "fidelidade": media([float(c["fidelidade"]["aprovada"]) for c in julgados]),
+        "relevancia": media([float(c["relevancia"]["aprovada"]) for c in julgados]),
+        "n": len(validos),
+        "variantes": list(variantes),
+    }
+
+
+def sortear_amostra(rng: random.Random, golden: Sequence[LinhaRag] | None = None) -> list[Sorteado]:
+    """Uma pergunta adversarial e duas quaisquer das outras."""
+    golden = list(golden) if golden is not None else carregar_golden_rag()
+    adversariais = [i for i, linha in enumerate(golden) if linha.origem == "adversarial"]
+    primeira = rng.choice(adversariais)
+    resto = rng.sample([i for i in range(len(golden)) if i != primeira], 2)
+    return [
+        Sorteado(
+            id=id_da_pergunta(i), texto=golden[i].pergunta, grupo=golden[i].origem, item=golden[i]
+        )
+        for i in (primeira, *resto)
+    ]
+
+
+def caso_ao_vivo(
+    sorteado: Sorteado, *, retriever: Retriever, gerador: BaseChatModel, juiz: BaseChatModel
+) -> PassosDoCaso:
+    """Uma pergunta da amostra, na variante no ar: busca, resposta e os dois vereditos."""
+    linha: LinhaRag = sorteado.item
+    yield "busca"
+    retrieval, chunks = buscar_pergunta(retriever, linha, k=5)
+    yield "resposta"
+    inicio = time.perf_counter()
+    resposta = gerar_resposta(gerador, linha.pergunta, chunks)
+    yield "juiz"
+    geracao = julgar_geracao(juiz, linha, chunks, resposta, inicio=inicio)
+    return caso_rag(sorteado.id, linha, retrieval, geracao)
 
 
 # --- variantes e execução -------------------------------------------------------------------
@@ -201,7 +318,9 @@ def variante_configurada(config: Config) -> Variante:
     return Variante(config.embedder, config.chunker, config.reranker, config.self_querying)
 
 
-def rodar(config: Config, *, so_retrieval: bool = False, amostra: int | None = None) -> list[dict]:
+def rodar(
+    config: Config, *, so_retrieval: bool = False, amostra: int | None = None
+) -> Relatorio | None:
     from qdrant_client import QdrantClient
     from rich.console import Console
     from rich.table import Table
@@ -220,7 +339,7 @@ def rodar(config: Config, *, so_retrieval: bool = False, amostra: int | None = N
     variantes = variantes_disponiveis(client, config)
     if not variantes:
         console.print("[red]Nenhuma coleção encontrada no Qdrant. Rode `ampere ingest --todas`.")
-        return []
+        return None
     if not tem_trabalhador(config):
         console.print("[yellow]Sem GROQ_API_KEY: variantes com self-querying foram puladas.")
     configurada = variante_configurada(config)
@@ -290,7 +409,36 @@ def rodar(config: Config, *, so_retrieval: bool = False, amostra: int | None = N
     if cliente is not None:
         _publicar(cliente, golden, detalhes)
         console.print("[dim]Langfuse: dataset e runs publicados.")
-    return linhas
+
+    if configurada.nome not in detalhes:
+        console.print(
+            f"[yellow]A variante do .env ({configurada.nome}) não foi avaliada: "
+            "a execução não é gravada."
+        )
+        return None
+    retrieval, geracao = detalhes[configurada.nome]
+    vereditos = {v.pergunta: v for v in geracao.vereditos} if geracao else {}
+    casos = [
+        caso_rag(id_da_pergunta(i), linha, r, vereditos.get(linha.pergunta))
+        for i, (linha, r) in enumerate(zip(golden, retrieval.por_pergunta, strict=True))
+    ]
+    variantes = [
+        {
+            "nome": linha["variante"],
+            "embedder": linha["embedder"],
+            "chunker": linha["chunker"],
+            "reranker": linha["reranker"],
+            "self_querying": linha["self_querying"],
+            "recall_at_5": linha["recall_at_5"],
+            "mrr": linha["mrr"],
+        }
+        for linha in linhas
+    ]
+    contexto = {
+        **contexto_base(config, prompts=PROMPTS_DO_RAG, n=len(golden)),
+        "variante": configurada.nome,
+    }
+    return Relatorio(contexto, resumo_rag(configurada.nome, casos, variantes), casos)
 
 
 def _imprimir_vereditos(console: Any, nome: str, geracao: ResultadoGeracao) -> None:
