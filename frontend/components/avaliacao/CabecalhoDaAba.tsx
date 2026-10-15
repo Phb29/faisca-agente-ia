@@ -36,7 +36,7 @@ export function CabecalhoDaAba(props: Props) {
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-ink-2">{fraseDaAba(nome, mostrada)}</p>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
         {opcoes.length > 0 && (
           <label>
             <span className="sr-only">Execução mostrada</span>
