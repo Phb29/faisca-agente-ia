@@ -75,6 +75,22 @@ async def test_lista_as_execucoes_do_eval_sem_os_casos(client, banco):
     assert (await client.get("/avaliacao/rag/execucoes", headers=ATENDENTE)).json() == []
 
 
+async def test_lista_vem_das_mais_novas_para_as_mais_velhas_ate_o_limite(client, banco):
+    with conectar(banco, autocommit=True) as conn:
+        velha = salvar_completa(conn, "juiz", contexto={}, resumo={}, casos=[])
+        conn.execute(
+            "UPDATE execucoes_de_eval SET criada_em = now() - interval '1 day' WHERE id = %s",
+            (velha,),
+        )
+        nova = salvar_completa(conn, "juiz", contexto={}, resumo={}, casos=[])
+
+    todas = await client.get("/avaliacao/juiz/execucoes", headers=ATENDENTE)
+    uma = await client.get("/avaliacao/juiz/execucoes?limite=1", headers=ATENDENTE)
+
+    assert [e["id"] for e in todas.json()] == [nova, velha]
+    assert [e["id"] for e in uma.json()] == [nova]
+
+
 async def test_eval_invalido_e_execucao_inexistente_sao_404(client):
     assert (await client.get("/avaliacao/nada/execucoes", headers=ATENDENTE)).status_code == 404
     assert (await client.post("/avaliacao/nada/amostra", headers=ATENDENTE)).status_code == 404
@@ -82,6 +98,10 @@ async def test_eval_invalido_e_execucao_inexistente_sao_404(client):
     assert malformado.status_code == 404
     inexistente = await client.get(f"/avaliacao/execucoes/{NENHUMA}", headers=ATENDENTE)
     assert inexistente.status_code == 404
+    # O stream responde 404 antes de abrir, e fecha a escuta que já tinha aberto.
+    for execucao_id in ("nao-e-uuid", NENHUMA):
+        stream = await client.get(f"/avaliacao/execucoes/{execucao_id}/stream", headers=ATENDENTE)
+        assert stream.status_code == 404, execucao_id
 
 
 async def test_amostra_cria_execucao_e_job_juntos(client, banco):
@@ -176,6 +196,7 @@ async def test_amostra_de_ponta_a_ponta_pela_fila_e_pelo_stream(servidor, banco,
             thread.start()
             recebidos = await asyncio.wait_for(coletar_ate(r, {"eval_fim", "error"}), timeout=20)
             thread.join(timeout=10)
+            assert not thread.is_alive(), "o worker não terminou o job"
 
     tipos = [t for t, _ in recebidos]
     assert tipos[0] == "eval_estado"

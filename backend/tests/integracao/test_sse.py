@@ -89,6 +89,7 @@ async def test_sse_recebe_os_cinco_eventos_na_ordem_e_reenvia_ao_reconectar(serv
             thread.start()
             recebidos = await asyncio.wait_for(coletar(r, 5), timeout=10)
             thread.join(timeout=5)
+            assert not thread.is_alive(), "o worker não terminou o job"
 
         tipos = [t for t, _ in recebidos]
         assert tipos == ["token", "tool_call", "approval_required", "message_done", "error"]
@@ -133,6 +134,7 @@ async def test_sse_aceita_cliente_id_por_query_string(servidor, banco):
             thread.start()
             recebidos = await asyncio.wait_for(coletar(r, 1), timeout=10)
             thread.join(timeout=5)
+            assert not thread.is_alive(), "o worker não terminou o job"
         assert recebidos[0][0] == "message_done"
         assert recebidos[0][1]["conteudo"] == "olá"
 
