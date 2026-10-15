@@ -2,7 +2,9 @@
 
 Enfileirar também avisa os workers com `NOTIFY fila_de_jobs`, dentro da mesma transação: o
 aviso só sai se o job foi gravado, e o worker acorda na hora em vez de esperar a próxima
-volta do polling.
+volta do polling. Os jobs do chat pertencem a uma Conversa e publicam no canal dela; um job
+sem Conversa (a amostra ao vivo dos evals) traz o próprio canal. A fila não sabe o que cada
+tipo de job faz: quem sabe é o executor que a raiz de composição liga a cada tipo.
 """
 
 from dataclasses import dataclass
@@ -12,18 +14,26 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from ampere.conversas.conversas import atualizar_status, gravar_mensagem, titulo_a_partir_de
+from ampere.fila.eventos import canal as canal_da_conversa
 
 CANAL_DA_FILA = "fila_de_jobs"
-TipoDeJob = Literal["mensagem", "retomada"]
+TipoDeJob = Literal["mensagem", "retomada", "eval"]
+# Um job em processamento há mais tempo que isso é de um worker que morreu: ele deixa de
+# segurar a Conversa (o job preso em si continua sem recuperação).
+MINUTOS_ATE_LIBERAR_A_CONVERSA = 10
 
 
 @dataclass(frozen=True)
 class Job:
+    """`canal` é onde o worker publica os eventos do job: o da Conversa, para o chat, ou um
+    próprio, para jobs sem Conversa."""
+
     id: int
     tipo: TipoDeJob
-    conversa_id: str
+    conversa_id: str | None
     message_id: str | None
     payload: dict
+    canal: str = ""
 
 
 def enfileirar_mensagem(
@@ -69,21 +79,50 @@ def enfileirar_retomada(
     return linha["id"]
 
 
-def pegar_proximo_job(conn: psycopg.Connection) -> Job | None:
-    """Reserva o job pendente mais antigo com `FOR UPDATE SKIP LOCKED`: dois workers nunca
-    pegam o mesmo e nenhum espera o outro."""
+def enfileirar_sem_conversa(
+    conn: psycopg.Connection, *, tipo: TipoDeJob, canal: str, payload: dict
+) -> int:
+    """Job que não pertence a uma Conversa e publica no `canal` dado. O banco só aceita job
+    sem Conversa do tipo `eval` (ver a migração 0004). Dentro de uma transação de quem
+    chama, o job e o aviso só valem se ela for confirmada."""
     with conn.transaction():
         linha = conn.execute(
-            """
-            UPDATE fila_de_jobs SET status = 'processando', iniciado_em = now()
-            WHERE id = (
-                SELECT id FROM fila_de_jobs WHERE status = 'pendente'
-                ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1
-            )
-            RETURNING id, tipo, conversa_id::text, message_id, payload
-            """
+            "INSERT INTO fila_de_jobs (tipo, canal, payload) VALUES (%s, %s, %s) RETURNING id",
+            (tipo, canal, Jsonb(payload)),
         ).fetchone()
-    return Job(**linha) if linha else None
+        _avisar_workers(conn)
+    return linha["id"]
+
+
+_RESERVAR = """
+UPDATE fila_de_jobs SET status = 'processando', iniciado_em = now()
+WHERE id = (
+    SELECT f.id FROM fila_de_jobs AS f
+    WHERE f.status = 'pendente'
+      AND NOT EXISTS (
+          SELECT 1 FROM fila_de_jobs AS anterior
+          WHERE anterior.conversa_id = f.conversa_id AND anterior.id < f.id
+            AND (anterior.status = 'pendente'
+                 OR (anterior.status = 'processando'
+                     AND anterior.iniciado_em > now() - make_interval(mins => %s))))
+    ORDER BY f.id FOR UPDATE SKIP LOCKED LIMIT 1
+)
+RETURNING id, tipo, conversa_id::text, message_id, payload, canal
+"""
+
+
+def pegar_proximo_job(conn: psycopg.Connection) -> Job | None:
+    """Reserva o job pendente mais antigo com `FOR UPDATE SKIP LOCKED`: dois workers nunca
+    pegam o mesmo e nenhum espera o outro. Um job só é reservado quando nenhum job mais
+    antigo da mesma Conversa está pendente ou em processamento, para duas mensagens da mesma
+    Conversa nunca rodarem juntas sobre o mesmo thread do LangGraph. Isso também fecha a
+    corrida entre dois workers: enquanto o primeiro não confirma a reserva do job mais
+    antigo, o segundo ainda o vê como pendente e pula o seguinte."""
+    with conn.transaction():
+        linha = conn.execute(_RESERVAR, (MINUTOS_ATE_LIBERAR_A_CONVERSA,)).fetchone()
+    if linha is None:
+        return None
+    return Job(**{**linha, "canal": linha["canal"] or canal_da_conversa(linha["conversa_id"])})
 
 
 def concluir_job(conn: psycopg.Connection, job_id: int, erro: str | None = None) -> None:

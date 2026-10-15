@@ -4,13 +4,20 @@ mensagens e Aprovações Pendentes antes de publicar os eventos."""
 import asyncio
 import threading
 
+import psycopg
 import pytest
 
 from ampere.acoes.aprovacoes import listar_pendentes
 from ampere.conversas.conversas import criar_conversa, listar_mensagens, obter_conversa
 from ampere.fila.eventos import Evento, canal, escutar, publicar
 from ampere.fila.executor import ExecutorFalso
-from ampere.fila.fila import CANAL_DA_FILA, enfileirar_mensagem
+from ampere.fila.fila import (
+    CANAL_DA_FILA,
+    concluir_job,
+    enfileirar_mensagem,
+    enfileirar_sem_conversa,
+    pegar_proximo_job,
+)
 from ampere.fila.worker import processar_um_job, rodar_worker
 from ampere.nucleo.banco import conectar
 
@@ -229,6 +236,93 @@ def test_worker_acorda_pelo_aviso_sem_esperar_o_intervalo(banco):
     worker.join(timeout=5)
 
     assert concluidos == 1, "o job foi processado bem antes dos 30s do intervalo"
+
+
+# --- reserva por Conversa e jobs sem Conversa -------------------------------------------------
+
+
+def test_job_do_chat_carrega_o_canal_da_conversa(banco):
+    with conectar(banco) as conn:
+        conversa_id = criar_conversa(conn, "c1")
+        enfileirar_mensagem(conn, conversa_id, "msg-1", "oi", "c1")
+        conn.commit()
+
+    with conectar(banco, autocommit=True) as conn:
+        job = pegar_proximo_job(conn)
+
+    assert job.conversa_id == conversa_id
+    assert job.canal == canal(conversa_id)
+
+
+def test_segundo_job_da_mesma_conversa_espera_o_primeiro_terminar(banco):
+    with conectar(banco) as conn:
+        conversa_id = criar_conversa(conn, "c1")
+        enfileirar_mensagem(conn, conversa_id, "msg-1", "primeira", "c1")
+        enfileirar_mensagem(conn, conversa_id, "msg-2", "segunda", "c1")
+        conn.commit()
+
+    with conectar(banco, autocommit=True) as conn:
+        primeiro = pegar_proximo_job(conn)
+        assert primeiro.message_id == "msg-1"
+        assert pegar_proximo_job(conn) is None, "o primeiro ainda está em processamento"
+        concluir_job(conn, primeiro.id)
+        segundo = pegar_proximo_job(conn)
+
+    assert segundo.message_id == "msg-2"
+
+
+def test_job_preso_ha_mais_de_dez_minutos_deixa_de_segurar_a_conversa(banco):
+    with conectar(banco) as conn:
+        conversa_id = criar_conversa(conn, "c1")
+        enfileirar_mensagem(conn, conversa_id, "msg-1", "primeira", "c1")
+        enfileirar_mensagem(conn, conversa_id, "msg-2", "segunda", "c1")
+        conn.commit()
+
+    with conectar(banco, autocommit=True) as conn:
+        preso = pegar_proximo_job(conn)
+        conn.execute(
+            "UPDATE fila_de_jobs SET iniciado_em = now() - interval '11 minutes' WHERE id = %s",
+            (preso.id,),
+        )
+        segundo = pegar_proximo_job(conn)
+
+    assert segundo is not None
+    assert segundo.message_id == "msg-2"
+
+
+def test_conversas_diferentes_sao_reservadas_ao_mesmo_tempo(banco):
+    with conectar(banco) as conn:
+        uma = criar_conversa(conn, "c1")
+        outra = criar_conversa(conn, "c2")
+        enfileirar_mensagem(conn, uma, "msg-a", "oi", "c1")
+        enfileirar_mensagem(conn, outra, "msg-b", "oi", "c2")
+        conn.commit()
+
+    with conectar(banco, autocommit=True) as conn:
+        primeiro = pegar_proximo_job(conn)
+        segundo = pegar_proximo_job(conn)
+
+    assert {primeiro.conversa_id, segundo.conversa_id} == {uma, outra}
+
+
+def test_job_sem_conversa_tem_canal_proprio(banco):
+    with conectar(banco, autocommit=True) as conn:
+        job_id = enfileirar_sem_conversa(
+            conn, tipo="eval", canal="avaliacao_teste", payload={"execucao_id": "x"}
+        )
+        job = pegar_proximo_job(conn)
+
+    assert job.id == job_id
+    assert job.tipo == "eval"
+    assert job.conversa_id is None
+    assert job.canal == "avaliacao_teste"
+    assert job.payload == {"execucao_id": "x"}
+
+
+def test_banco_recusa_job_do_chat_sem_conversa(banco):
+    with conectar(banco, autocommit=True) as conn:
+        with pytest.raises(psycopg.errors.CheckViolation):
+            conn.execute("INSERT INTO fila_de_jobs (tipo, payload) VALUES ('mensagem', '{}')")
 
 
 def _processar(conn_string: str, executor) -> bool:
