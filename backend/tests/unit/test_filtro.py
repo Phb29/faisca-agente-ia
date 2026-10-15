@@ -82,3 +82,21 @@ def test_self_querying_usa_o_trabalhador_com_saida_estruturada():
     assert "Base de Conhecimento" in mensagens[0].content
     assert isinstance(mensagens[1], HumanMessage)
     assert mensagens[1].content == "qual a garantia do meu celular?"
+
+
+def test_self_querying_que_falha_busca_sem_filtro():
+    """O modelo às vezes recusa e não chama a ferramenta (a Groq responde 400). O filtro é só
+    um atalho: sem ele, a busca olha a Base de Conhecimento inteira, e o turno segue."""
+    from ampere.rag.self_querying import SelfQuerying
+
+    class TrabalhadorQueRecusa:
+        def with_structured_output(self, _schema):
+            return self
+
+        def invoke(self, *_args, **_kwargs):
+            raise RuntimeError("Tool choice is required, but model did not call a tool")
+
+    filtro = SelfQuerying(TrabalhadorQueRecusa()).gerar_filtro("me passa o e-mail da Carla")
+
+    assert filtro == FiltroDeBusca()
+    assert traduzir_filtro(filtro) is None
