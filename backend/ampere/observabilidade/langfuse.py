@@ -21,12 +21,17 @@ class Observabilidade:
             self._cliente = Langfuse(
                 public_key=config.langfuse_public_key,
                 secret_key=config.langfuse_secret_key,
-                host=config.langfuse_host,
+                base_url=config.langfuse_base_url,
             )
 
     @property
     def ativa(self) -> bool:
         return self._cliente is not None
+
+    @property
+    def cliente(self) -> Any | None:
+        """O cliente do Langfuse (datasets e runs dos evals), ou None sem chaves."""
+        return self._cliente
 
     def callback(self) -> Any | None:
         """CallbackHandler oficial do LangChain, para passar no invoke do grafo."""

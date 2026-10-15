@@ -5,9 +5,9 @@ from decimal import Decimal
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from ampere.acoes.pedidos import Pedido, Reembolso, StoreDePedidosEmMemoria
-from ampere.acoes.reembolso import avaliar_gate
+from ampere.acoes.reembolso import avaliar_gate, motivo_para_recusar
 from ampere.acoes.ticket import ResumoDoTicket, StoreDeTicketsEmMemoria, abrir_ticket
+from ampere.loja.pedidos import Pedido, Reembolso, StoreDePedidosEmMemoria
 from ampere.nucleo.falsos import JevFalso, ModeloFalso
 
 JANELA = {"janela_dias": 30, "limiar": 0.5}
@@ -131,3 +131,32 @@ def test_abrir_ticket_usa_trabalhador_e_grava_no_store():
     assert tickets.listar()[0].resumo == "Frete atrasado"
     prompt = trabalhador.chamadas[0][0].content
     assert "meu frete atrasou" in prompt
+
+
+def test_pedido_aguardando_pagamento_ou_ja_reembolsado_nao_pode_ser_reembolsado():
+    aguardando = Pedido(
+        id="P3",
+        cliente_id="cli_ana",
+        produto="Capa",
+        linha="acessorios",
+        valor=Decimal("89.90"),
+        status="aguardando_pagamento",
+        data=date(2026, 9, 1),
+    )
+    store = StoreDePedidosEmMemoria([*PEDIDOS, aguardando])
+
+    assert motivo_para_recusar(PEDIDOS[0], store) is None
+    assert "pagamento" in motivo_para_recusar(aguardando, store)
+
+    store.registrar_reembolso(Reembolso(pedido_id="P1", cliente_id="cli_ana", valor=Decimal("1")))
+
+    assert "já foi reembolsado" in motivo_para_recusar(PEDIDOS[0], store)
+    assert store.reembolso_do_pedido("cli_bruno", "P1") is None
+
+
+def test_resumo_do_pedido_usa_o_formato_que_o_cliente_le():
+    notebook = PEDIDOS[1]
+
+    assert notebook.resumo() == (
+        "Pedido P2: Notebook (notebooks), R$ 4.899,90, status em transporte, feito em 01/09/2026"
+    )

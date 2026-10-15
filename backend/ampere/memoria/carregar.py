@@ -2,10 +2,9 @@
 
 from langgraph.store.base import BaseStore
 
-from ampere.grafo.estado import Memorias
-from ampere.memoria.store import namespace_episodica, namespace_procedural, namespace_semantica
-
-CHAVE_PROCEDURAL = "instrucoes"
+from ampere.memoria.procedural import ler_procedural
+from ampere.memoria.store import namespace_episodica, namespace_semantica
+from ampere.memoria.tipos import Episodio, Memorias
 
 
 def carregar_memorias(
@@ -16,7 +15,8 @@ def carregar_memorias(
     limite_semantica: int = 5,
     limite_episodica: int = 3,
 ) -> Memorias:
-    """Semântica por similaridade com a mensagem, episódica pelos mais recentes, procedural."""
+    """Semântica por similaridade com a mensagem, episódica da mais recente para a mais
+    antiga, e a procedural inteira."""
     semantica = [
         item.value["texto"]
         for item in store.search(
@@ -25,7 +25,7 @@ def carregar_memorias(
     ]
     episodios = store.search(namespace_episodica(cliente_id), limit=1000)
     episodios.sort(key=lambda item: item.value.get("data", ""), reverse=True)
-    episodica = [
+    episodica: list[Episodio] = [
         {
             "resumo": item.value.get("resumo", ""),
             "desfecho": item.value.get("desfecho", ""),
@@ -39,8 +39,3 @@ def carregar_memorias(
         "episodica": episodica,
         "procedural": ler_procedural(store, cliente_id),
     }
-
-
-def ler_procedural(store: BaseStore, cliente_id: str) -> str:
-    item = store.get(namespace_procedural(cliente_id), CHAVE_PROCEDURAL)
-    return str(item.value.get("texto", "")) if item else ""

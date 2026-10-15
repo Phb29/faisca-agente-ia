@@ -14,11 +14,23 @@ from pathlib import Path
 from typing import Any, Protocol
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.store.base import BaseStore
 from pydantic import BaseModel, field_validator
 
+from ampere.acoes.ticket import StoreDeTickets, StoreDeTicketsEmMemoria
 from ampere.evals.juiz import Veredito, julgar_resolucao
+from ampere.loja.pedidos import Pedido, Reembolso, StoreDePedidos, StoreDePedidosEmMemoria
+from ampere.loja.seed import PEDIDOS, REEMBOLSOS
+from ampere.memoria.procedural import escrever_procedural
+from ampere.memoria.store import criar_store_em_memoria, namespace_semantica
 from ampere.nucleo.config import Config
+from ampere.observabilidade.langfuse import Observabilidade
+from ampere.rag.embedders import criar_embedder
 
 PASTA_DADOS = Path(__file__).parent / "dados"
 NOME_DATASET = "golden_agente"
@@ -164,23 +176,12 @@ class ExecutorDeCenarios:
     """Monta as dependências reais uma vez e um grafo novo (memória limpa) por cenário."""
 
     def __init__(self, config: Config, composicao: "Composicao") -> None:
-        from ampere.rag.embedders import criar_embedder
-
         self.config = config
         self.composicao = composicao
         self.observabilidade = composicao.observabilidade
         self.embed = criar_embedder("minilm", config).embed
 
     def executar(self, cenario: Cenario) -> ResultadoDoCenario:
-        from langchain_core.messages import HumanMessage
-        from langgraph.checkpoint.memory import InMemorySaver
-
-        from ampere.acoes.pedidos import Pedido, Reembolso, StoreDePedidosEmMemoria
-        from ampere.acoes.ticket import StoreDeTicketsEmMemoria
-        from ampere.fila.seed import PEDIDOS, REEMBOLSOS
-        from ampere.memoria.salvar import escrever_procedural
-        from ampere.memoria.store import criar_store_em_memoria, namespace_semantica
-
         store = criar_store_em_memoria(self.embed)
         iniciais = interpretar_memorias(cenario.memorias)
         for fato in iniciais.semantica:
@@ -219,20 +220,28 @@ class ExecutorDeCenarios:
         veredito = None
         if resposta:
             veredito = julgar_resolucao(
-                self.fabrica.juiz(), mensagem=cenario.mensagem, resposta=resposta
+                self.composicao.juiz(), mensagem=cenario.mensagem, resposta=resposta
             )
         return ResultadoDoCenario(cenario, comparacao, resposta, veredito)
 
 
 class Composicao(Protocol):
     """O que a raiz de composição (`ampere.cli`) entrega ao eval: o grafo real montado com
-    os modelos e o retriever de produção, sem este módulo importar de `ampere.grafo`."""
+    os modelos e o retriever de produção, e o juiz, sem este módulo importar de
+    `ampere.grafo`."""
 
-    observabilidade: Any
+    observabilidade: Observabilidade
+
+    def juiz(self) -> BaseChatModel: ...
 
     def construir_grafo(
-        self, *, pedidos: Any, tickets: Any, checkpointer: Any, store: Any
-    ) -> Any: ...
+        self,
+        *,
+        pedidos: StoreDePedidos,
+        tickets: StoreDeTickets,
+        checkpointer: BaseCheckpointSaver,
+        store: BaseStore,
+    ) -> CompiledStateGraph: ...
 
 
 def rodar(config: Config, composicao: Composicao, *, amostra: int | None = None) -> list[dict]:

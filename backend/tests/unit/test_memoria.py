@@ -2,20 +2,16 @@
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from ampere.grafo.estado import memorias_vazias
 from ampere.memoria.carregar import carregar_memorias
-from ampere.memoria.salvar import (
-    MemoriasExtraidas,
-    escrever_procedural,
-    ler_procedural,
-    salvar_memorias,
-)
+from ampere.memoria.procedural import MemoriaProcedural, escrever_procedural, ler_procedural
+from ampere.memoria.salvar import MemoriasExtraidas, salvar_memorias
 from ampere.memoria.store import (
     criar_store_em_memoria,
     namespace_episodica,
     namespace_procedural,
     namespace_semantica,
 )
+from ampere.memoria.tipos import memorias_vazias
 from ampere.nucleo.falsos import ModeloFalso, embed_falso
 
 CONVERSA = [
@@ -128,3 +124,31 @@ def test_cliente_sem_nada_devolve_memorias_vazias():
     store = criar_store_em_memoria(embed_falso)
 
     assert carregar_memorias(store, "cli_novo", "oi") == memorias_vazias()
+
+
+def test_salvar_sem_guardar_fatos_grava_so_o_episodio():
+    store = criar_store_em_memoria(embed_falso)
+
+    salvar_memorias(
+        store,
+        ModeloFalso([extraidas()]),
+        "cli_ana",
+        CONVERSA,
+        desfecho="Resolvida",
+        acoes=[],
+        guardar_fatos=False,
+    )
+    memorias = carregar_memorias(store, "cli_ana", "notebook")
+
+    assert memorias["semantica"] == []
+    assert len(memorias["episodica"]) == 1
+
+
+def test_memoria_procedural_da_api_le_e_escreve_no_store():
+    store = criar_store_em_memoria(embed_falso)
+    memoria = MemoriaProcedural(store)
+
+    memoria.escrever("cli_ana", "  Responder em tom formal.  ")
+
+    assert memoria.ler("cli_ana") == "Responder em tom formal."
+    assert ler_procedural(store, "cli_ana") == "Responder em tom formal."

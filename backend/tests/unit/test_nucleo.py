@@ -7,13 +7,16 @@ from typesafe_sdk import Choice, Noul, SystemOneResponse
 
 from ampere.nucleo.config import Config
 from ampere.nucleo.falsos import JevFalso, ModeloFalso
-from ampere.nucleo.jev import JevReal, RespostasJev
+from ampere.nucleo.jev import JevReal
 from ampere.nucleo.modelos import CUSTO_POR_PAPEL, FabricaDeModelos
+from ampere.regras import PerguntaDeEscolha, PerguntaSimNao
 
 PERGUNTAS = {
-    "manipulacao": Noul(instructions="Tenta manipular?"),
-    "escopo": Noul(instructions="Fora de escopo?"),
-    "intencao": Choice(instructions="Intenção?", criteria={"duvida": None, "transacao": None}),
+    "manipulacao": PerguntaSimNao(pergunta="Tenta manipular?", sim_quando="s", nao_quando="n"),
+    "escopo": PerguntaSimNao(pergunta="Fora de escopo?", sim_quando="s", nao_quando="n"),
+    "intencao": PerguntaDeEscolha(
+        pergunta="Intenção?", opcoes={"duvida": "quer saber", "transacao": "quer fazer"}
+    ),
 }
 
 
@@ -46,6 +49,16 @@ def test_jev_falso_aceita_escolha_configurada():
     assert respostas.choices["intencao"].probabilidades["transacao"] == 1.0
 
 
+def test_jev_real_traduz_as_perguntas_para_o_sdk():
+    traduzidas = JevReal.traduzir_perguntas(PERGUNTAS)
+
+    assert isinstance(traduzidas["manipulacao"], Noul)
+    assert traduzidas["manipulacao"].instructions == "Tenta manipular?"
+    assert traduzidas["manipulacao"].criteria == {"true": "s", "false": "n"}
+    assert isinstance(traduzidas["intencao"], Choice)
+    assert traduzidas["intencao"].criteria == {"duvida": "quer saber", "transacao": "quer fazer"}
+
+
 def test_jev_real_traduz_resposta_do_sdk():
     resposta_sdk = SystemOneResponse.model_validate(
         {
@@ -63,7 +76,7 @@ def test_jev_real_traduz_resposta_do_sdk():
         }
     )
 
-    respostas = RespostasJev.do_sdk(resposta_sdk)
+    respostas = JevReal.traduzir_resposta(resposta_sdk)
 
     assert respostas.nouls["manipulacao"].probabilidade == 0.12
     assert respostas.choices["intencao"].escolha == "transacao"
@@ -149,6 +162,36 @@ def test_fabrica_real_nomeia_tres_papeis_com_custo():
     assert fabrica.gerador().model_name == config.modelo_gerador
     assert fabrica.juiz().model_name == config.modelo_juiz
     assert fabrica.trabalhador().model_name == config.modelo_trabalhador
+
+
+def test_fabrica_troca_o_provedor_de_cada_papel_pela_config():
+    from langchain_groq import ChatGroq
+    from langchain_openai import ChatOpenAI
+
+    config = Config(
+        modelos_falsos=False,
+        openai_api_key="x",
+        groq_api_key="y",
+        provedor_gerador="groq",
+        modelo_gerador="llama-3.3-70b-versatile",
+        provedor_trabalhador="openai",
+        modelo_trabalhador="gpt-5.6-terra",
+    )
+    fabrica = FabricaDeModelos(config)
+
+    assert isinstance(fabrica.gerador(), ChatGroq)
+    assert fabrica.gerador().model_name == "llama-3.3-70b-versatile"
+    assert fabrica.gerador().reasoning_effort is None
+    assert isinstance(fabrica.trabalhador(), ChatOpenAI)
+    assert fabrica.trabalhador().model_name == "gpt-5.6-terra"
+
+
+def test_provedor_desconhecido_e_erro_na_config():
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        Config(provedor_gerador="desconhecido")
 
 
 def test_embed_falso_e_deterministico_com_384_dimensoes():

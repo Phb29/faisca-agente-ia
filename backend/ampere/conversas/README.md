@@ -1,0 +1,3 @@
+# conversas
+
+O que é: as Conversas de cada Cliente e o transcript de mensagens que o chat e a Tela do Atendente mostram (`conversas.py`), com o status da Conversa (aberta, Aprovação Pendente, escalada, resolvida) e o título, que vem da primeira mensagem do Cliente. As funções recebem a conexão e devolvem dataclasses tipadas; quem precisa de atomicidade, como a fila ao gravar a mensagem junto com o job, abre a própria transação. Por que assim: o transcript é o registro legível da Conversa e fica separado da Memória de Curto Prazo, que é o estado do grafo no checkpointer e guarda muito mais (tool calls, resumo, decisões do Gate); a API e o worker leem e escrevem aqui sem precisar saber que o grafo existe.

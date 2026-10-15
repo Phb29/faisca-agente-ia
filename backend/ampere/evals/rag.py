@@ -17,8 +17,8 @@ from pydantic import BaseModel
 
 from ampere.evals.juiz import Veredito, julgar_fidelidade, julgar_relevancia
 from ampere.evals.metricas import mrr, recall_at_k
-from ampere.grafo.prompts import carregar_prompt
 from ampere.nucleo.config import Config
+from ampere.prompts import carregar_prompt
 from ampere.rag.busca import Retriever, formatar_chunks
 from ampere.rag.chunkers import Chunk
 
@@ -116,6 +116,7 @@ def gerar_resposta(gerador: BaseChatModel, pergunta: str, chunks: Sequence[Chunk
     sistema = prompt.renderizar(
         memoria_procedural="(nenhuma)",
         memorias="(nada registrado)",
+        resumo_da_conversa="(nenhum)",
         contexto=formatar_chunks(chunks),
         critica="",
     )

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import frontmatter
 
-from ampere.fila.seed import CLIENTES, PEDIDOS, REEMBOLSOS
+from ampere.loja.seed import CLIENTES, PEDIDOS, REEMBOLSOS
 
 RAIZ = Path(__file__).resolve().parents[2] / "ampere"
 PASTA_BASE = RAIZ / "rag" / "base_de_conhecimento"

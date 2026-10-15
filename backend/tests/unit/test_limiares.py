@@ -1,10 +1,9 @@
 """Limiares dos Guardrails: exatamente no limiar bloqueia (>=), um pouco abaixo não."""
 
-from typesafe_sdk import Noul
-
 from ampere.guardrails.entrada import RESPOSTAS_FIXAS, avaliar_entrada
 from ampere.guardrails.saida import CRITICAS, RESPOSTA_ESCALADA, avaliar_saida
 from ampere.nucleo.falsos import JevFalso
+from ampere.regras import PerguntaSimNao
 
 LIMIAR = 0.7
 
@@ -62,7 +61,7 @@ def test_entrada_sensivel_usa_limiar_proprio():
     assert avaliar_entrada(jev, "oi", limiar=LIMIAR, limiar_sensivel=0.4).sensivel is True
 
 
-def test_entrada_faz_uma_unica_chamada_com_tres_nouls_nomeadas():
+def test_entrada_faz_uma_unica_chamada_com_tres_perguntas_de_sim_ou_nao():
     jev = JevFalso()
 
     resultado = avaliar_entrada(jev, "qual o prazo de troca?", limiar=LIMIAR)
@@ -70,10 +69,10 @@ def test_entrada_faz_uma_unica_chamada_com_tres_nouls_nomeadas():
     assert len(jev.chamadas) == 1
     estado, perguntas = jev.chamadas[0]
     assert estado["mensagem_do_cliente"] == "qual o prazo de troca?"
+    assert estado["ultima_resposta_do_chatbot"] == "(início da Conversa)"
     assert "contexto" in estado
     assert set(perguntas) == {"manipulacao", "fora_de_escopo", "dado_sensivel"}
-    assert all(isinstance(p, Noul) for p in perguntas.values())
-    assert all(set(p.criteria) == {"true", "false"} for p in perguntas.values())
+    assert all(isinstance(p, PerguntaSimNao) for p in perguntas.values())
     assert set(resultado.probabilidades) == {"manipulacao", "fora_de_escopo", "dado_sensivel"}
 
 
@@ -85,9 +84,7 @@ def test_respostas_fixas_cobrem_os_dois_bloqueios():
 def test_saida_aprovada_quando_todas_abaixo_do_limiar():
     jev = JevFalso(nouls={"fora_do_contexto": 0.2, "promessa_indevida": 0.1, "vazamento": 0.0})
 
-    resultado = avaliar_saida(
-        jev, "O prazo é 7 dias.", contexto=["7 dias"], acoes=[], limiar=LIMIAR
-    )
+    resultado = avaliar_saida(jev, "O prazo é 7 dias.", trechos=["7 dias"], limiar=LIMIAR)
 
     assert resultado.aprovada is True
     assert resultado.motivo is None
@@ -97,7 +94,7 @@ def test_saida_aprovada_quando_todas_abaixo_do_limiar():
 def test_saida_reprova_exatamente_no_limiar():
     jev = JevFalso(nouls={"vazamento": LIMIAR})
 
-    resultado = avaliar_saida(jev, "resposta", contexto=[], acoes=[], limiar=LIMIAR)
+    resultado = avaliar_saida(jev, "resposta", limiar=LIMIAR)
 
     assert resultado.aprovada is False
     assert resultado.motivo == "vazamento"
@@ -107,13 +104,13 @@ def test_saida_reprova_exatamente_no_limiar():
 def test_saida_nao_reprova_um_pouco_abaixo_do_limiar():
     jev = JevFalso(nouls={"promessa_indevida": LIMIAR - 0.001})
 
-    resultado = avaliar_saida(jev, "resposta", contexto=[], acoes=[], limiar=LIMIAR)
+    resultado = avaliar_saida(jev, "resposta", limiar=LIMIAR)
 
     assert resultado.aprovada is True
 
 
 def motivo_de(nouls: dict[str, float]) -> str | None:
-    return avaliar_saida(JevFalso(nouls=nouls), "r", contexto=[], acoes=[], limiar=LIMIAR).motivo
+    return avaliar_saida(JevFalso(nouls=nouls), "r", limiar=LIMIAR).motivo
 
 
 def test_saida_motivo_segue_a_ordem_fora_do_contexto_promessa_vazamento():
@@ -123,20 +120,26 @@ def test_saida_motivo_segue_a_ordem_fora_do_contexto_promessa_vazamento():
     assert motivo_de({"vazamento": 0.99}) == "vazamento"
 
 
-def test_saida_faz_uma_unica_chamada_com_tres_nouls_nomeadas():
+def test_saida_faz_uma_unica_chamada_com_tres_perguntas_de_sim_ou_nao():
     jev = JevFalso()
 
     resultado = avaliar_saida(
-        jev, "O prazo é 7 dias.", contexto=["trecho"], acoes=["consultar_pedido"], limiar=LIMIAR
+        jev,
+        "O prazo é 7 dias.",
+        pergunta="qual o prazo?",
+        trechos=["trecho"],
+        resultados_das_acoes=["consultar_pedido: Pedido P1 entregue"],
+        limiar=LIMIAR,
     )
 
     assert len(jev.chamadas) == 1
     estado, perguntas = jev.chamadas[0]
+    assert estado["pergunta_do_cliente"] == "qual o prazo?"
     assert estado["resposta_do_assistente"] == "O prazo é 7 dias."
     assert estado["trechos_da_base_de_conhecimento"] == ["trecho"]
-    assert estado["acoes_executadas"] == ["consultar_pedido"]
+    assert estado["resultados_das_acoes"] == ["consultar_pedido: Pedido P1 entregue"]
     assert set(perguntas) == {"fora_do_contexto", "promessa_indevida", "vazamento"}
-    assert all(isinstance(p, Noul) for p in perguntas.values())
+    assert all(isinstance(p, PerguntaSimNao) for p in perguntas.values())
     assert set(resultado.probabilidades) == {"fora_do_contexto", "promessa_indevida", "vazamento"}
 
 

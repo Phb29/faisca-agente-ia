@@ -1,16 +1,16 @@
 """Borda principal: o grafo compilado, com modelos falsos, Jev falso, checkpointer e Store em
 memória. Nenhum token é gasto. Cada teste exercita um comportamento observável do grafo."""
 
-from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
-from langchain_core.messages import ToolMessage
+from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.types import Command
 
-from ampere.acoes.pedidos import Reembolso
 from ampere.guardrails.entrada import RESPOSTAS_FIXAS
 from ampere.guardrails.saida import RESPOSTA_ESCALADA
+from ampere.loja.pedidos import Reembolso
 from ampere.memoria.store import namespace_semantica
 from ampere.nucleo.config import Config
 from ampere.nucleo.falsos import JevFalso
@@ -198,7 +198,7 @@ def test_rejeicao_com_motivo_chega_ao_gerador():
 
 
 def test_reembolso_recente_forca_aprovacao_mesmo_com_valor_baixo():
-    recente = Reembolso(pedido_id="P1", cliente_id="cli_ana", valor=Decimal("10"))
+    recente = Reembolso(pedido_id="P2", cliente_id="cli_ana", valor=Decimal("10"))
     cenario = Cenario(
         gerador=[tool_call("emitir_reembolso", {"pedido_id": "P1", "motivo": "x"}), "ok"],
         jev=JevFalso(choices={"intencao": "transacao"}, nouls={"exige_aprovacao": 0.0}),
@@ -225,7 +225,7 @@ def test_salvar_memoria_grava_fato_e_episodio_por_turno():
 
 
 def test_memoria_procedural_entra_no_prompt_do_gerador():
-    from ampere.memoria.salvar import escrever_procedural
+    from ampere.memoria.procedural import escrever_procedural
 
     cenario = Cenario()
     escrever_procedural(cenario.store, "cli_ana", "Responder em tom formal.")
@@ -264,14 +264,136 @@ def test_conversa_longa_e_resumida_pelo_trabalhador():
     assert "Resumo das mensagens antigas." in cenario.gerador.chamadas[-1][0].content
 
 
-def test_metadata_do_prompt_vai_na_config_da_chamada_ao_gerador():
+def test_nome_e_versao_do_prompt_vao_como_metadata_da_chamada_ao_gerador():
+    espiao = EspiaoDeMetadata()
     cenario = Cenario()
 
-    cenario.turno("oi")
+    cenario.grafo.invoke(
+        {"messages": [HumanMessage("oi")], "cliente_id": "cli_ana", "conversa_id": "c1"},
+        {**cenario.invocar_config("c1"), "callbacks": [espiao]},
+    )
 
-    # o ModeloFalso guarda as mensagens; a metadata vai por config e é verificada no executor
-    assert cenario.gerador.chamadas
+    assert {"prompt_nome": "gerar_resposta", "prompt_versao": "2"}.items() <= espiao.metadata[
+        0
+    ].items()
 
 
-def test_data_fixa_para_o_teste_nao_depende_do_relogio():
-    assert datetime.now(UTC).year >= 2026
+# --- correções: o Gate decide uma vez, o Guardrail de saída vê as Ações, escalar ------------
+
+
+def test_rejeicao_do_atendente_vale_mesmo_se_o_jev_mudar_de_ideia_na_retomada():
+    cenario = Cenario(
+        gerador=[tool_call("emitir_reembolso", {"pedido_id": "P1", "motivo": "x"}), "ok"],
+        jev=JevFalso(choices={"intencao": "transacao"}, sequencias={"exige_aprovacao": [0.9, 0.1]}),
+    )
+    assert cenario.turno("reembolso do P1")["__interrupt__"]
+
+    cenario.grafo.invoke(
+        Command(resume={"aprovado": False, "motivo": "não"}), cenario.invocar_config()
+    )
+
+    assert cenario.pedidos.reembolsos_recentes("cli_ana") == []
+    chamadas_ao_gate = [p for _, p in cenario.jev.chamadas if "exige_aprovacao" in p]
+    assert len(chamadas_ao_gate) == 1, "a retomada não pode perguntar ao Gate de novo"
+
+
+def test_pedido_ja_reembolsado_nao_chega_ao_gate_nem_reembolsa_de_novo():
+    ja_feito = Reembolso(pedido_id="P1", cliente_id="cli_ana", valor=Decimal("199.90"))
+    cenario = Cenario(
+        gerador=[tool_call("emitir_reembolso", {"pedido_id": "P1", "motivo": "x"}), "ok"],
+        jev=JevFalso(choices={"intencao": "transacao"}),
+        reembolsos=[ja_feito],
+    )
+
+    estado = cenario.turno("reembolso do P1")
+
+    tool_message = next(m for m in estado["messages"] if isinstance(m, ToolMessage))
+    assert "já foi reembolsado" in tool_message.content
+    assert "__interrupt__" not in estado
+    assert len(cenario.pedidos.reembolsos_recentes("cli_ana")) == 1
+    assert not [p for _, p in cenario.jev.chamadas if "exige_aprovacao" in p]
+
+
+def test_guardrail_de_saida_ve_a_pergunta_e_o_resultado_das_acoes():
+    cenario = Cenario(
+        gerador=[
+            tool_call("emitir_reembolso", {"pedido_id": "P1", "motivo": "x"}),
+            "Reembolso registrado.",
+        ],
+        jev=JevFalso(choices={"intencao": "transacao"}, nouls={"exige_aprovacao": 0.1}),
+    )
+
+    cenario.turno("reembolso do P1")
+
+    estado_do_jev, perguntas = cenario.jev.chamadas[-1]
+    assert set(perguntas) == {"fora_do_contexto", "promessa_indevida", "vazamento"}
+    assert estado_do_jev["pergunta_do_cliente"] == "reembolso do P1"
+    assert any("R$ 199,90" in r for r in estado_do_jev["resultados_das_acoes"])
+
+
+def test_resposta_fixa_de_escalada_nao_passa_pelo_guardrail_de_saida():
+    cenario = Cenario(jev=JevFalso(choices={"intencao": "quer_humano"}, nouls={"vazamento": 1.0}))
+
+    estado = cenario.turno("quero um humano")
+
+    assert estado["desfecho"] == "Escalada"
+    assert estado["escalada_por"] == "pedido_do_cliente"
+    assert len(cenario.tickets.listar()) == 1
+    assert not [p for _, p in cenario.jev.chamadas if "vazamento" in p]
+
+
+def test_acao_inventada_pelo_modelo_vira_resultado_e_nao_derruba_o_turno():
+    cenario = Cenario(
+        gerador=[tool_call("cancelar_pedido", {"pedido_id": "P1"}), "Não consigo cancelar."],
+        jev=JevFalso(choices={"intencao": "transacao"}),
+    )
+
+    estado = cenario.turno("cancela o P1")
+
+    tool_message = next(m for m in estado["messages"] if isinstance(m, ToolMessage))
+    assert tool_message.content == "A Ação cancelar_pedido não existe."
+    assert ultima_resposta(estado) == "Não consigo cancelar."
+
+
+def test_turno_com_dado_sensivel_nao_vira_fato_mas_vira_episodio():
+    cenario = Cenario(jev=JevFalso(nouls={"dado_sensivel": 0.9}, choices={"intencao": "duvida"}))
+
+    cenario.turno("meu RG é 12.345.678-9, qual a garantia?")
+
+    assert cenario.store.search(namespace_semantica("cli_ana")) == []
+    assert cenario.store.search(("cli_ana", "episodica"))
+
+
+def test_roteador_e_guardrail_de_entrada_veem_a_ultima_resposta_do_chatbot():
+    cenario = Cenario(gerador=["Quer que eu abra o Reembolso do P1?"])
+    cenario.turno("meu fone quebrou")
+
+    cenario.turno("sim, pode fazer")
+
+    estado_do_roteador = next(e for e, p in reversed(cenario.jev.chamadas) if "intencao" in p)
+    assert estado_do_roteador["ultima_resposta_do_chatbot"] == "Quer que eu abra o Reembolso do P1?"
+
+
+def test_resumo_nunca_separa_um_pedido_de_acao_do_seu_resultado():
+    config = Config(modelos_falsos=True, limite_mensagens_resumo=3)
+    cenario = Cenario(
+        config=config,
+        gerador=[tool_call("consultar_pedido", {"pedido_id": "P1"}), "Foi entregue."],
+        trabalhador=[MEMORIAS, "Resumo."],
+        jev=JevFalso(choices={"intencao": "transacao"}),
+    )
+
+    for i in range(3):
+        estado = cenario.turno(f"status do P1? ({i})")
+
+    primeira = estado["messages"][0]
+    assert isinstance(primeira, HumanMessage), "o corte é sempre numa mensagem do Cliente"
+    assert estado["resumo"] == "Resumo."
+
+
+class EspiaoDeMetadata(BaseCallbackHandler):
+    def __init__(self) -> None:
+        self.metadata: list[dict] = []
+
+    def on_chat_model_start(self, serialized, messages, *, metadata=None, **kwargs):
+        self.metadata.append(dict(metadata or {}))

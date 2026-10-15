@@ -1,11 +1,17 @@
-"""Modelos falsos para testes e para rodar o sistema inteiro sem gastar um token.
+"""Falsos para testes e para rodar o sistema inteiro sem gastar um token.
 
-`ModeloFalso` é um chat model do LangChain que devolve respostas roteirizadas.
-`JevFalso` devolve probabilidades fixas por nome de pergunta. Os dois são injetados
-pela mesma fábrica que injeta os modelos reais (`ampere.nucleo.modelos`).
+`ModeloFalso` é um chat model do LangChain que devolve respostas roteirizadas. `JevFalso`
+devolve probabilidades fixas por nome de pergunta. Os dois entram pela mesma fábrica que
+injeta os modelos reais (`ampere.nucleo.modelos`), então o resto do sistema não sabe a
+diferença.
 """
 
+import hashlib
 import json
+import math
+import re
+import time
+import typing
 from collections.abc import Iterator, Sequence
 from typing import Any
 
@@ -14,20 +20,24 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_core.runnables import Runnable, RunnableLambda
-from pydantic import BaseModel, Field
-from typesafe_sdk import Choice, Noul
+from pydantic import BaseModel, Field, PrivateAttr
 
 from ampere.nucleo.jev import EstadoDoJev, Perguntas, RespostaChoice, RespostaNoul, RespostasJev
+from ampere.regras import PerguntaDeEscolha, PerguntaSimNao
 
 Resposta = AIMessage | str | BaseModel
+DIMENSOES_DO_EMBED_FALSO = 384
 
 
 class ModeloFalso(BaseChatModel):
-    """Devolve as respostas na ordem dada; quando acabam, repete a última."""
+    """Devolve, para cada tipo pedido (texto ou um modelo Pydantic), as respostas desse tipo
+    na ordem dada; quando acabam, repete a última. Sem nenhuma do tipo pedido, um modelo
+    Pydantic ganha uma instância padrão e texto é erro."""
 
     respostas: list[Any] = Field(default_factory=list)
     chamadas: list[list[BaseMessage]] = Field(default_factory=list)
-    _posicao: int = 0
+    pausa_entre_palavras: float = 0.0
+    _usadas: set[int] = PrivateAttr(default_factory=set)
 
     def __init__(self, respostas: Sequence[Resposta] | None = None, **kwargs: Any) -> None:
         super().__init__(respostas=list(respostas or ["ok"]), **kwargs)
@@ -36,24 +46,19 @@ class ModeloFalso(BaseChatModel):
     def _llm_type(self) -> str:
         return "modelo-falso"
 
-    def _proxima(self, tipo: type | None = None) -> Any:
-        """Consome a primeira resposta pendente do tipo pedido; esgotadas, repete a última."""
-        pendentes = self.respostas[self._posicao :]
-        for deslocamento, resposta in enumerate(pendentes):
-            if tipo is None or isinstance(resposta, tipo):
-                if len(pendentes) > 1:
-                    del self.respostas[self._posicao + deslocamento]
-                    self.respostas.insert(self._posicao, resposta)
-                    self._posicao += 1
-                return resposta
-        for resposta in reversed(self.respostas[: self._posicao]):
-            if tipo is None or isinstance(resposta, tipo):
-                return resposta
-        if isinstance(tipo, type) and issubclass(tipo, BaseModel):
-            return instancia_padrao(tipo)
-        raise AssertionError(f"ModeloFalso sem resposta do tipo {tipo}")
+    def _proxima(self, tipo: Any) -> Any:
+        do_tipo = [i for i, r in enumerate(self.respostas) if isinstance(r, tipo)]
+        if not do_tipo:
+            if isinstance(tipo, type) and issubclass(tipo, BaseModel):
+                return instancia_padrao(tipo)
+            raise AssertionError(f"ModeloFalso sem resposta do tipo {tipo}")
+        pendentes = [i for i in do_tipo if i not in self._usadas]
+        escolhida = pendentes[0] if pendentes else do_tipo[-1]
+        self._usadas.add(escolhida)
+        return self.respostas[escolhida]
 
-    def _proxima_mensagem(self) -> AIMessage:
+    def _responder(self, messages: list[BaseMessage]) -> AIMessage:
+        """A próxima mensagem do roteiro; o modo demonstração decide olhando `messages`."""
         resposta = self._proxima(AIMessage | str)
         return resposta if isinstance(resposta, AIMessage) else AIMessage(content=resposta)
 
@@ -65,7 +70,7 @@ class ModeloFalso(BaseChatModel):
         **kwargs: Any,
     ) -> ChatResult:
         self.chamadas.append(list(messages))
-        return ChatResult(generations=[ChatGeneration(message=self._proxima_mensagem())])
+        return ChatResult(generations=[ChatGeneration(message=self._responder(messages))])
 
     def _stream(
         self,
@@ -74,24 +79,11 @@ class ModeloFalso(BaseChatModel):
         run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> Iterator[ChatGenerationChunk]:
+        """Tool calls saem num pedaço só; texto sai palavra por palavra, como tokens."""
         self.chamadas.append(list(messages))
-        mensagem = self._proxima_mensagem()
+        mensagem = self._responder(messages)
         if mensagem.tool_calls:
-            yield ChatGenerationChunk(
-                message=AIMessageChunk(
-                    content=mensagem.content,
-                    tool_calls=mensagem.tool_calls,
-                    tool_call_chunks=[
-                        {
-                            "name": tc["name"],
-                            "args": json.dumps(tc["args"]),
-                            "id": tc["id"],
-                            "index": i,
-                        }
-                        for i, tc in enumerate(mensagem.tool_calls)
-                    ],
-                )
-            )
+            yield ChatGenerationChunk(message=_chunk_com_tool_calls(mensagem))
             return
         palavras = str(mensagem.content).split(" ")
         for i, palavra in enumerate(palavras):
@@ -100,6 +92,7 @@ class ModeloFalso(BaseChatModel):
             if run_manager:
                 run_manager.on_llm_new_token(pedaco, chunk=chunk)
             yield chunk
+            time.sleep(self.pausa_entre_palavras)
 
     def bind_tools(self, tools: Sequence[Any], **kwargs: Any) -> Runnable:
         return self
@@ -112,8 +105,21 @@ class ModeloFalso(BaseChatModel):
         return RunnableLambda(responder)
 
 
+def _chunk_com_tool_calls(mensagem: AIMessage) -> AIMessageChunk:
+    return AIMessageChunk(
+        content=mensagem.content,
+        tool_calls=mensagem.tool_calls,
+        tool_call_chunks=[
+            {"name": tc["name"], "args": json.dumps(tc["args"]), "id": tc["id"], "index": i}
+            for i, tc in enumerate(mensagem.tool_calls)
+        ],
+    )
+
+
 class JevFalso:
-    """Devolve probabilidade fixa por nome de pergunta (0.0 por padrão) e escolha fixa."""
+    """Probabilidade fixa por nome de pergunta (0.0 por padrão) e escolha fixa por pergunta
+    de escolha (a primeira opção por padrão). `sequencias` devolve um valor por chamada, repetindo o
+    último, e tem precedência sobre `nouls`."""
 
     def __init__(
         self,
@@ -127,7 +133,6 @@ class JevFalso:
         self.chamadas: list[tuple[EstadoDoJev, Perguntas]] = []
 
     def _probabilidade(self, nome: str) -> float:
-        """Sequência por pergunta (a última se repete) tem precedência sobre o valor fixo."""
         sequencia = self.sequencias.get(nome)
         if sequencia:
             return sequencia.pop(0) if len(sequencia) > 1 else sequencia[0]
@@ -137,10 +142,10 @@ class JevFalso:
         self.chamadas.append((estado, perguntas))
         respostas = RespostasJev()
         for nome, pergunta in perguntas.items():
-            if isinstance(pergunta, Noul):
+            if isinstance(pergunta, PerguntaSimNao):
                 respostas.nouls[nome] = RespostaNoul(self._probabilidade(nome))
-            elif isinstance(pergunta, Choice):
-                opcoes = list(pergunta.criteria)
+            elif isinstance(pergunta, PerguntaDeEscolha):
+                opcoes = list(pergunta.opcoes)
                 escolha = self.choices.get(nome, opcoes[0])
                 probabilidades = {o: (1.0 if o == escolha else 0.0) for o in opcoes}
                 respostas.choices[nome] = RespostaChoice(escolha, 1.0, probabilidades)
@@ -149,8 +154,6 @@ class JevFalso:
 
 def instancia_padrao(schema: type[BaseModel]) -> BaseModel:
     """Instância "vazia" de um modelo Pydantic, para o sistema inteiro rodar com falsos."""
-    import typing
-
     valores: dict[str, Any] = {}
     for nome, campo in schema.model_fields.items():
         if not campo.is_required():
@@ -175,16 +178,12 @@ def instancia_padrao(schema: type[BaseModel]) -> BaseModel:
 
 
 def embed_falso(textos: list[str]) -> list[list[float]]:
-    """Vetor de 384 dimensões por bag-of-words hasheado: determinístico e sem modelo."""
-    import hashlib
-    import math
-    import re
-
+    """Bag-of-words hasheado em 384 dimensões: determinístico, normalizado e sem modelo."""
     vetores = []
     for texto in textos:
-        vetor = [0.0] * 384
+        vetor = [0.0] * DIMENSOES_DO_EMBED_FALSO
         for palavra in re.findall(r"\w+", texto.lower()):
-            indice = int(hashlib.md5(palavra.encode()).hexdigest(), 16) % 384
+            indice = int(hashlib.md5(palavra.encode()).hexdigest(), 16) % DIMENSOES_DO_EMBED_FALSO
             vetor[indice] += 1.0
         norma = math.sqrt(sum(v * v for v in vetor)) or 1.0
         vetores.append([v / norma for v in vetor])

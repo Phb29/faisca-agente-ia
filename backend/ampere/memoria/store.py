@@ -1,9 +1,14 @@
-"""Fábricas do Store do LangGraph (em memória para testes, Postgres em produção) e namespaces."""
+"""O Store do LangGraph (em memória nos testes, Postgres em produção) e os namespaces.
+
+Cada Cliente tem o próprio namespace, então a busca de um Cliente nunca alcança a memória
+de outro. Só a Memória Semântica é indexada por embedding; as outras são lidas por chave.
+"""
 
 from collections.abc import Callable
 
 from langgraph.store.memory import InMemoryStore
 from langgraph.store.postgres import PostgresStore
+from psycopg_pool import ConnectionPool
 
 Embed = Callable[[list[str]], list[list[float]]]
 
@@ -12,21 +17,17 @@ EPISODICA = "episodica"
 PROCEDURAL = "procedural"
 
 
-def _index(embed: Embed, dims: int) -> dict:
+def _indice(embed: Embed, dims: int) -> dict:
     return {"dims": dims, "embed": embed, "fields": ["texto"]}
 
 
 def criar_store_em_memoria(embed: Embed, *, dims: int = 384) -> InMemoryStore:
-    return InMemoryStore(index=_index(embed, dims))
+    return InMemoryStore(index=_indice(embed, dims))
 
 
-def criar_store_postgres(conn_string: str, embed: Embed, *, dims: int = 384) -> PostgresStore:
-    """Abre uma conexão psycopg em autocommit, constrói o Store e cria as tabelas."""
-    import psycopg
-    from psycopg.rows import dict_row
-
-    conn = psycopg.connect(conn_string, autocommit=True, prepare_threshold=0, row_factory=dict_row)
-    store = PostgresStore(conn, index=_index(embed, dims))
+def criar_store_postgres(pool: ConnectionPool, embed: Embed, *, dims: int = 384) -> PostgresStore:
+    """Store sobre o pool; `setup` cria as tabelas do índice vetorial (idempotente)."""
+    store = PostgresStore(pool, index=_indice(embed, dims))
     store.setup()
     return store
 

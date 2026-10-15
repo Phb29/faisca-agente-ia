@@ -17,9 +17,9 @@ from ampere.evals.juiz import (
     julgar_resolucao,
 )
 from ampere.evals.metricas import MatrizDeConfusao
-from ampere.evals.prompts import NOMES, carregar_prompt
 from ampere.nucleo.config import Config
 from ampere.nucleo.falsos import ModeloFalso
+from ampere.prompts import NOMES, carregar_prompt
 from ampere.rag.busca import RetrieverFalso
 from ampere.rag.chunkers import Chunk
 
@@ -65,7 +65,7 @@ def rotulo(aprovada: bool, n: int = 0) -> calibracao.Rotulo:
 # --- prompts e juiz ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("nome", NOMES)
+@pytest.mark.parametrize("nome", [n for n in NOMES if n.startswith("juiz_")])
 def test_prompts_do_juiz_tem_nome_versao_e_texto(nome):
     prompt = carregar_prompt(nome)
 
@@ -392,3 +392,53 @@ def test_rotulos_humanos_carregam_balanceados():
     assert len(rotulos) >= 40
     aprovadas = sum(r.aprovada for r in rotulos)
     assert abs(aprovadas - (len(rotulos) - aprovadas)) <= 6
+
+
+# --- um cenário de ponta a ponta (a borda entre o eval e o grafo) ----------------------------
+
+
+def test_executar_cenario_roda_o_grafo_compara_e_pede_veredito_ao_juiz():
+    from ampere.grafo.construtor import Dependencias, construir_grafo
+    from ampere.nucleo.falsos import JevFalso
+    from ampere.nucleo.modelos import FabricaDeModelos
+    from ampere.observabilidade.langfuse import Observabilidade
+
+    config = Config(modelos_falsos=True)
+    fabrica = FabricaDeModelos(
+        config,
+        gerador=ModeloFalso(["A garantia de notebooks é de 12 meses."]),
+        juiz=ModeloFalso([Veredito(aprovada=True, critica="resolveu")]),
+        jev=JevFalso(choices={"intencao": "duvida"}),
+    )
+
+    class ComposicaoFalsa:
+        observabilidade = Observabilidade(config)
+
+        def juiz(self):
+            return fabrica.juiz()
+
+        def construir_grafo(self, *, pedidos, tickets, checkpointer, store):
+            deps = Dependencias(
+                config=config,
+                fabrica=fabrica,
+                retriever=RetrieverFalso([chunk("garantia_notebooks.md")]),
+                pedidos=pedidos,
+                tickets=tickets,
+                observabilidade=self.observabilidade,
+            )
+            return construir_grafo(deps, checkpointer=checkpointer, store=store)
+
+    cenario = agente.Cenario(
+        id="duvida-01",
+        mensagem="qual a garantia do notebook?",
+        cliente_id="cli_ana",
+        intencao_esperada="duvida",
+        acao_esperada="consultar_base_de_conhecimento",
+        desfecho_esperado="Resolvida",
+    )
+
+    resultado = agente.ExecutorDeCenarios(config, ComposicaoFalsa()).executar(cenario)
+
+    assert resultado.comparacao.tudo_ok
+    assert resultado.resposta == "A garantia de notebooks é de 12 meses."
+    assert resultado.veredito == Veredito(aprovada=True, critica="resolveu")

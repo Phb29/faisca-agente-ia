@@ -36,7 +36,7 @@ railway domain --service api
 
 ## 5. worker
 
-Mesmo repositório, mesmo root directory `backend`, mesma imagem resultante; só o start command muda: `ampere worker`. Sem domínio, sem healthcheck HTTP (o worker não abre porta) e sem pre-deploy (a api já migrou). Se quiser dois workers, suba `numReplicas` para 2: a fila usa `SELECT FOR UPDATE SKIP LOCKED`, então réplicas não disputam o mesmo job.
+Mesmo repositório, mesmo root directory `backend`, mesma imagem resultante; só o start command muda: `ampere worker`. Sem domínio, sem healthcheck HTTP (o worker não abre porta) e sem pre-deploy (a api já migrou). Se quiser dois workers, suba `numReplicas` para 2: a fila usa `SELECT FOR UPDATE SKIP LOCKED`, então réplicas não disputam o mesmo job, e todas acordam pelo mesmo `NOTIFY fila_de_jobs`.
 
 ## 6. frontend
 
@@ -51,10 +51,12 @@ Root directory `frontend`. O `frontend/Dockerfile` gera a imagem standalone do N
 | `OPENAI_API_KEY` | | sim | | gerador; a api não chama modelo |
 | `GROQ_API_KEY` | | sim | | trabalhador |
 | `TYPESAFE_API_KEY` | | sim | | Jev |
-| `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` | | sim | | sem elas o tracing é no-op |
+| `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` | | sim | | sem elas o tracing é no-op |
 | `ATENDENTE_TOKEN` | sim | | | protege a Tela do Atendente; troque o padrão |
+| `ORIGENS_PERMITIDAS` | sim | | | CORS, em JSON: `["https://<domínio do frontend>"]` |
 | `EMBEDDER`, `CHUNKER`, `RERANKER`, `SELF_QUERYING` | sim | sim | | precisam ser iguais nos dois e iguais aos usados no `ingest` |
 | `LIMIAR_*`, `VALOR_LIMITE_REEMBOLSO`, `LIMITE_MENSAGENS_RESUMO` | | sim | | opcionais, ver `.env.example` |
+| `PROVEDOR_*`, `MODELO_*` | | sim | | opcionais; provedor e modelo de cada papel, ver `.env.example` |
 | `NEXT_PUBLIC_API_URL` | | | sim | domínio público da api, usado no build |
 
 Use variáveis compartilhadas do ambiente para `DATABASE_URL`, `QDRANT_URL`, `EMBEDDER` e `CHUNKER`, referenciadas na api e no worker, para não divergirem. Pelo CLI: `railway variable set OPENAI_API_KEY=... --service worker`.

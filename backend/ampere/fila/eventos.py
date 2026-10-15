@@ -1,7 +1,12 @@
-"""Eventos que viajam do worker para a API por LISTEN/NOTIFY, um canal por Conversa.
+"""Eventos que viajam do worker para a API por LISTEN/NOTIFY, um canal por Conversa, e da API
+para o front pelo SSE, com o mesmo nome e os mesmos dados:
 
-Cinco tipos, os mesmos que o SSE repassa ao front: `token`, `tool_call`,
-`approval_required`, `message_done` e `error`.
+- `token` {texto}: um pedaço da resposta sendo escrita.
+- `tool_call` {nome, args}: uma Ação começou.
+- `etapa` {no, detalhe, alerta}: um nó do grafo terminou (os bastidores do turno).
+- `approval_required` {aprovacao_id, pedido_id, valor, probabilidade, resumo, motivo_do_gate}.
+- `message_done` {mensagem_id, conteudo, desfecho}: a resposta final, já gravada.
+- `error` {mensagem}.
 """
 
 from collections.abc import AsyncIterator
@@ -12,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from ampere.nucleo.banco import conectar_async
 
-TipoDeEvento = Literal["token", "tool_call", "approval_required", "message_done", "error"]
+TipoDeEvento = Literal["token", "tool_call", "etapa", "approval_required", "message_done", "error"]
 
 
 class Evento(BaseModel):
@@ -21,20 +26,20 @@ class Evento(BaseModel):
 
 
 def canal(conversa_id: str) -> str:
-    """Nome do canal do NOTIFY: `conversa_` mais o uuid sem hifens (identificador válido)."""
+    """Nome do canal do NOTIFY: `conversa_` mais o uuid sem hífens (identificador válido)."""
     return "conversa_" + str(conversa_id).replace("-", "")
 
 
 def publicar(conn: psycopg.Connection, conversa_id: str, evento: Evento) -> None:
-    """Envia o evento pelo canal da Conversa. A conexão precisa estar em autocommit ou
-    commitar depois, senão o NOTIFY fica preso na transação."""
+    """Envia o evento pelo canal da Conversa. Em autocommit sai na hora; dentro de uma
+    transação, só no commit."""
     conn.execute("SELECT pg_notify(%s, %s)", (canal(conversa_id), evento.model_dump_json()))
 
 
 class Escuta:
-    """Um LISTEN no canal da Conversa. `abrir` executa o LISTEN antes de qualquer consumo,
-    para quem precisa garantir que nenhum evento se perca entre a resposta e o primeiro
-    `async for` (o SSE); `fechar` encerra a conexão."""
+    """Um LISTEN no canal da Conversa, numa conexão dedicada. `abrir` faz o LISTEN antes de
+    qualquer consumo, para quem precisa garantir que nenhum evento se perca entre a
+    resposta HTTP e o primeiro `async for` (o SSE)."""
 
     def __init__(self, conn_string: str, conversa_id: str) -> None:
         self._conn_string = conn_string

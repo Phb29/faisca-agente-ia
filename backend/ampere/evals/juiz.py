@@ -11,7 +11,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
-from ampere.evals.prompts import carregar_prompt
+from ampere.prompts import carregar_prompt
 
 
 class Veredito(BaseModel):
@@ -62,13 +62,13 @@ def julgar_fidelidade(
         f"Trechos da Base de Conhecimento:\n{trechos}\n\n"
         f"Resposta do chatbot:\n{resposta}"
     )
-    return _julgar(juiz, "fidelidade", humano)
+    return _julgar(juiz, "juiz_fidelidade", humano)
 
 
 def julgar_relevancia(juiz: BaseChatModel, *, pergunta: str, resposta: str) -> Veredito:
     """A resposta trata do que o Cliente perguntou?"""
     humano = f"Pergunta do Cliente:\n{pergunta}\n\nResposta do chatbot:\n{resposta}"
-    return _julgar(juiz, "relevancia", humano)
+    return _julgar(juiz, "juiz_relevancia", humano)
 
 
 def julgar_resolucao(
@@ -80,4 +80,4 @@ def julgar_resolucao(
 ) -> Veredito:
     """A resposta resolve o problema sem prometer nada fora da política?"""
     humano = f"Mensagem do Cliente:\n{mensagem}\n\nResposta do chatbot:\n{resposta}"
-    return _julgar(juiz, "resolucao", humano, few_shot=formatar_few_shot(few_shot))
+    return _julgar(juiz, "juiz_resolucao", humano, few_shot=formatar_few_shot(few_shot))

@@ -12,8 +12,10 @@ from collections.abc import Iterator
 import psycopg
 import pytest
 from psycopg import sql
+from psycopg_pool import ConnectionPool
 
-from ampere.fila.tabelas import migrar
+from ampere.nucleo.banco import criar_pool
+from ampere.nucleo.migracao import migrar
 
 pytestmark = pytest.mark.integracao
 
@@ -43,3 +45,13 @@ def banco() -> Iterator[str]:
             admin.execute(
                 sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(nome))
             )
+
+
+@pytest.fixture
+def pool(banco: str) -> Iterator[ConnectionPool]:
+    """Pool do banco do teste, fechado antes de o banco ser apagado."""
+    pool = criar_pool(banco, tamanho_maximo=4)
+    try:
+        yield pool
+    finally:
+        pool.close()

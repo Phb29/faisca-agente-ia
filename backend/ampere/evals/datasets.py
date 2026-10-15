@@ -16,8 +16,7 @@ Scores = dict[str, tuple[float | bool, str | None]]  # nome -> (valor, comentár
 
 def cliente_langfuse(config: Config) -> Any | None:
     """Reaproveita a construção do cliente feita por `Observabilidade`; None sem chaves."""
-    obs = Observabilidade(config)
-    return obs._cliente if obs.ativa else None
+    return Observabilidade(config).cliente
 
 
 def publicar_dataset(cliente: Any, nome: str, itens: list[dict[str, Any]]) -> None:

@@ -1,0 +1,35 @@
+# Gate de Aprovação
+#
+# Todo pedido de Reembolso passa por aqui antes de o dinheiro sair. A decisão segue esta
+# ordem, e a primeira que se aplicar vence:
+#
+#   1. Valor acima de VALOR_LIMITE_REEMBOLSO (padrão R$ 300): sempre vai para um Atendente.
+#   2. Cliente com outro Reembolso nos últimos JANELA_REEMBOLSO_RECENTE_DIAS (padrão 30):
+#      sempre vai para um Atendente.
+#   3. Nos demais casos, o Jev responde à pergunta abaixo. Se a probabilidade chegar a
+#      LIMIAR_GATE_APROVACAO (padrão 0,5), vai para um Atendente; abaixo disso, o Reembolso
+#      é feito na hora.
+#
+# As regras 1 e 2 são decididas por código, porque são política da Loja e não opinião. O
+# Jev é consultado mesmo assim, para que o Atendente veja a probabilidade no cartão da
+# Aprovação Pendente. A decisão é tomada uma única vez e fica gravada no estado da Conversa:
+# quando o Atendente responde, a Conversa retoma com a mesma decisão, sem perguntar de novo.
+#
+# Antes do Gate, dois casos nem chegam a ser avaliados: Pedido que ainda aguarda pagamento e
+# Pedido que já foi reembolsado.
+
+nome: gate_de_aprovacao
+versao: 2
+
+regras:
+  exige_aprovacao:
+    pergunta: >-
+      Considerando o valor do Reembolso, o limite da Loja para aprovação automática e o
+      histórico recente do Cliente, esta operação é crítica o bastante para exigir a
+      aprovação de um Atendente humano antes de ser executada?
+    sim_quando: >-
+      O valor é alto em relação ao limite, o padrão sugere risco de fraude ou abuso, ou há
+      algo incomum que uma pessoa deveria olhar.
+    nao_quando: >-
+      É um Reembolso pequeno e rotineiro, sem sinal de risco, que pode ser feito
+      automaticamente.

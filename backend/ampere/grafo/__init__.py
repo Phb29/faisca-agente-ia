@@ -1,1 +1,1 @@
-"""Grafo do LangGraph com oito nós. Importa das outras pastas; nenhuma outra importa daqui."""
+"""Grafo do LangGraph com nove nós. Importa das outras pastas; nenhuma outra importa daqui."""

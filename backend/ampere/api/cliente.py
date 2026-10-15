@@ -1,18 +1,27 @@
-"""Rotas do Cliente: Conversas, mensagens (202 idempotente) e a lista de Clientes seed."""
+"""Rotas do Cliente: Clientes e Pedidos para o chat, Conversas e mensagens (202 idempotente).
+
+Toda mensagem é mascarada aqui, na borda, antes de qualquer gravação: cartão, CPF, CVV e
+senha nunca chegam ao transcript, à fila, ao checkpoint nem ao trace.
+"""
+
+from datetime import date
 
 import psycopg
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from ampere.api.seguranca import ClienteId, Conexao, uuid_ou_404
-from ampere.fila.fila import (
+from ampere.api.dependencias import ClienteId, Conexao, Pool, uuid_ou_404
+from ampere.conversas.conversas import (
+    Conversa,
+    Mensagem,
     criar_conversa,
-    enfileirar_mensagem,
-    listar_clientes,
     listar_conversas,
     listar_mensagens,
     obter_conversa,
 )
+from ampere.fila.fila import enfileirar_mensagem
+from ampere.guardrails.mascaramento import mascarar
+from ampere.loja.pedidos import Cliente, StoreDePedidosPostgres, listar_clientes
 
 router = APIRouter()
 
@@ -22,49 +31,77 @@ class NovaConversa(BaseModel):
 
 
 class NovaMensagem(BaseModel):
-    message_id: str
+    message_id: str = Field(min_length=1, max_length=100)
+    conteudo: str = Field(min_length=1, max_length=4000)
+
+
+class MensagemRecebida(BaseModel):
+    enfileirada: bool
     conteudo: str
 
 
-def conversa_do_cliente(conn: psycopg.Connection, conversa_id: str, cliente_id: str) -> dict:
-    """Devolve a Conversa se for deste Cliente; 404 caso contrário (não vazamos que existe)."""
+class PedidoDoCliente(BaseModel):
+    id: str
+    cliente_id: str
+    produto: str
+    linha: str
+    valor: float
+    status: str
+    data: date
+
+
+def conversa_do_cliente(conn: psycopg.Connection, conversa_id: str, cliente_id: str) -> Conversa:
+    """A Conversa, se for deste Cliente; 404 caso contrário (sem revelar que ela existe)."""
     conversa = obter_conversa(conn, uuid_ou_404(conversa_id))
-    if conversa is None or conversa["cliente_id"] != cliente_id:
+    if conversa is None or conversa.cliente_id != cliente_id:
         raise HTTPException(status_code=404, detail="Conversa não encontrada")
     return conversa
 
 
 @router.get("/clientes")
-def clientes(conn: Conexao) -> list[dict]:
-    return listar_clientes(conn)
+def clientes(pool: Pool) -> list[Cliente]:
+    return listar_clientes(pool)
+
+
+@router.get("/pedidos")
+def pedidos(pool: Pool, cliente_id: ClienteId) -> list[PedidoDoCliente]:
+    return [
+        PedidoDoCliente(**{**vars(pedido), "valor": float(pedido.valor)})
+        for pedido in StoreDePedidosPostgres(pool).listar(cliente_id)
+    ]
 
 
 @router.post("/conversas", status_code=201)
 def criar(conn: Conexao, cliente_id: ClienteId, corpo: NovaConversa | None = None) -> dict:
-    titulo = corpo.titulo if corpo else None
-    return {"id": criar_conversa(conn, cliente_id, titulo)}
+    return {"id": criar_conversa(conn, cliente_id, corpo.titulo if corpo else None)}
 
 
 @router.get("/conversas")
-def listar(conn: Conexao, cliente_id: ClienteId) -> list[dict]:
+def listar(conn: Conexao, cliente_id: ClienteId) -> list[Conversa]:
     return listar_conversas(conn, cliente_id)
 
 
 @router.get("/conversas/{conversa_id}")
-def detalhe(conn: Conexao, cliente_id: ClienteId, conversa_id: str) -> dict:
+def detalhe(conn: Conexao, cliente_id: ClienteId, conversa_id: str) -> Conversa:
     return conversa_do_cliente(conn, conversa_id, cliente_id)
 
 
 @router.post("/conversas/{conversa_id}/mensagens", status_code=202)
-def enviar(conn: Conexao, cliente_id: ClienteId, conversa_id: str, corpo: NovaMensagem) -> dict:
+def enviar(
+    conn: Conexao, cliente_id: ClienteId, conversa_id: str, corpo: NovaMensagem
+) -> MensagemRecebida:
     conversa = conversa_do_cliente(conn, conversa_id, cliente_id)
-    enfileirada = enfileirar_mensagem(
-        conn, conversa["id"], corpo.message_id, corpo.conteudo, cliente_id
-    )
-    return {"enfileirada": enfileirada}
+    if conversa.status == "aprovacao_pendente":
+        # Uma mensagem nova desmontaria a interrupção do grafo que espera o Atendente.
+        raise HTTPException(
+            status_code=409, detail="A Conversa aguarda a decisão de um Atendente sobre o Reembolso"
+        )
+    conteudo = mascarar(corpo.conteudo.strip())
+    enfileirada = enfileirar_mensagem(conn, conversa.id, corpo.message_id, conteudo, cliente_id)
+    return MensagemRecebida(enfileirada=enfileirada, conteudo=conteudo)
 
 
 @router.get("/conversas/{conversa_id}/mensagens")
-def mensagens(conn: Conexao, cliente_id: ClienteId, conversa_id: str) -> list[dict]:
+def mensagens(conn: Conexao, cliente_id: ClienteId, conversa_id: str) -> list[Mensagem]:
     conversa = conversa_do_cliente(conn, conversa_id, cliente_id)
-    return listar_mensagens(conn, conversa["id"])
+    return listar_mensagens(conn, conversa.id)

@@ -7,9 +7,9 @@ from decimal import Decimal
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
-from ampere.acoes.pedidos import Pedido, Reembolso, StoreDePedidosEmMemoria
 from ampere.acoes.ticket import ResumoDoTicket, StoreDeTicketsEmMemoria
 from ampere.grafo.construtor import Dependencias, construir_grafo
+from ampere.loja.pedidos import Pedido, Reembolso, StoreDePedidosEmMemoria
 from ampere.memoria.salvar import MemoriasExtraidas
 from ampere.memoria.store import criar_store_em_memoria
 from ampere.nucleo.config import Config

@@ -20,3 +20,5 @@ fastembed_cache/
 .DS_Store
 .idea/
 .vscode/
+# Brainstorm visual
+.superpowers/

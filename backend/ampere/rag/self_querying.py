@@ -3,7 +3,7 @@
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from ampere.grafo.prompts import carregar_prompt
+from ampere.prompts import carregar_prompt
 from ampere.rag.filtro import FiltroDeBusca
 
 

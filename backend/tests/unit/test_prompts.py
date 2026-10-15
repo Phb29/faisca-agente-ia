@@ -1,8 +1,8 @@
-"""Cada nó do grafo tem o system prompt num arquivo próprio, com nome e versão."""
+"""Prompts: um arquivo por prompt, com nome e versão, e renderização estrita."""
 
 import pytest
 
-from ampere.grafo.prompts import NOMES, Prompt, carregar_prompt
+from ampere.prompts import NOMES, PASTA, Prompt, carregar_prompt
 
 
 @pytest.mark.parametrize("nome", NOMES)
@@ -15,23 +15,31 @@ def test_todo_prompt_tem_nome_versao_e_texto(nome):
     assert len(prompt.texto.strip()) > 50
 
 
-def test_prompts_cobrem_os_nos_e_tarefas_esperadas():
-    assert set(NOMES) == {
-        "gerar_resposta",
-        "agente",
-        "extrair_memorias",
-        "resumir_conversa",
-        "resumir_ticket",
-        "self_querying",
-    }
+def test_todo_arquivo_da_pasta_esta_na_lista():
+    assert {c.stem for c in PASTA.glob("*.md") if c.stem != "README"} == set(NOMES)
 
 
-def test_prompt_renderiza_variaveis():
-    prompt = carregar_prompt("gerar_resposta")
+def test_prompt_renderiza_todas_as_variaveis():
+    prompt = carregar_prompt("agente")
 
-    texto = prompt.renderizar(memoria_procedural="responder em tom formal", contexto="", critica="")
+    texto = prompt.renderizar(
+        memoria_procedural="responder em tom formal",
+        memorias="(nada)",
+        resumo_da_conversa="(nenhum)",
+        critica="",
+    )
 
     assert "responder em tom formal" in texto
+    assert "{{" not in texto
+
+
+def test_variavel_esquecida_ou_sobrando_e_erro():
+    prompt = carregar_prompt("self_querying")
+
+    with pytest.raises(ValueError, match="faltando"):
+        prompt.renderizar()
+    with pytest.raises(ValueError, match="sobrando"):
+        prompt.renderizar(pergunta="oi", extra="x")
 
 
 def test_prompt_desconhecido_falha_cedo():

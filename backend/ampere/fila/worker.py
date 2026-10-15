@@ -1,69 +1,48 @@
-"""O worker: pega um job da fila, roda o executor e publica cada evento no canal da
-Conversa. Grava a mensagem final e a Aprovação Pendente ANTES de publicar, para que quem
-receber o evento já encontre o dado no banco."""
+"""O worker: reserva um job, roda o executor e publica cada evento no canal da Conversa.
 
+A mensagem final e a Aprovação Pendente são gravadas ANTES do NOTIFY, para que quem receber
+o evento já encontre o dado no banco. Sem job, o worker dorme em `LISTEN fila_de_jobs` e
+acorda assim que a API enfileira algo (ou a cada `intervalo`, por garantia).
+"""
+
+import logging
 import threading
-import time
 import traceback
 
+import psycopg
+
+from ampere.acoes.aprovacoes import criar_aprovacao
+from ampere.conversas.conversas import StatusDaConversa, atualizar_status, gravar_mensagem
 from ampere.fila.eventos import Evento, publicar
 from ampere.fila.executor import Executor
-from ampere.fila.fila import (
-    Job,
-    atualizar_status_conversa,
-    concluir_job,
-    criar_aprovacao,
-    gravar_mensagem,
-    pegar_proximo_job,
-    substituir_conteudo_da_mensagem,
-)
+from ampere.fila.fila import CANAL_DA_FILA, Job, concluir_job, pegar_proximo_job
 from ampere.nucleo.banco import conectar
 
-STATUS_POR_DESFECHO = {"Resolvida": "resolvida", "Escalada": "escalada"}
+log = logging.getLogger(__name__)
+
+STATUS_POR_DESFECHO: dict[str | None, StatusDaConversa] = {
+    "Resolvida": "resolvida",
+    "Escalada": "escalada",
+}
 
 
-def _tratar_evento(conn, job: Job, evento: Evento) -> Evento:
-    """Persiste o que o evento exige e devolve o evento pronto para publicar."""
-    if evento.tipo == "approval_required":
-        d = evento.dados
-        aprovacao_id = criar_aprovacao(
-            conn,
-            job.conversa_id,
-            job.payload.get("cliente_id", ""),
-            d["pedido_id"],
-            d["valor"],
-            d["probabilidade"],
-            d["resumo"],
-        )
-        atualizar_status_conversa(conn, job.conversa_id, "aprovacao_pendente")
-        return Evento(tipo=evento.tipo, dados={**d, "aprovacao_id": aprovacao_id})
-    if evento.tipo == "message_done":
-        mascarada = evento.dados.get("mensagem_do_cliente_mascarada")
-        if mascarada and job.message_id:
-            substituir_conteudo_da_mensagem(conn, job.message_id, mascarada)
-        mensagem_id = gravar_mensagem(conn, job.conversa_id, "assistente", evento.dados["conteudo"])
-        status = STATUS_POR_DESFECHO.get(evento.dados.get("desfecho"), "aberta")
-        atualizar_status_conversa(conn, job.conversa_id, status)
-        return Evento(tipo=evento.tipo, dados={**evento.dados, "mensagem_id": mensagem_id})
-    return evento
-
-
-def processar_um_job(conn_string: str, executor: Executor) -> bool:
-    """Processa no máximo um job. Devolve False quando a fila está vazia."""
-    with conectar(conn_string, autocommit=True) as conn:
-        job = pegar_proximo_job(conn)
-        if job is None:
-            return False
-        try:
-            for evento in executor.executar(job):
-                publicar(conn, job.conversa_id, _tratar_evento(conn, job, evento))
-        except Exception as exc:  # noqa: BLE001 - qualquer falha vira erro do job
-            erro = "".join(traceback.format_exception_only(exc)).strip()
-            concluir_job(conn, job.id, erro=erro)
-            publicar(conn, job.conversa_id, Evento(tipo="error", dados={"mensagem": erro}))
-        else:
-            concluir_job(conn, job.id)
-        return True
+def processar_um_job(conn: psycopg.Connection, executor: Executor) -> bool:
+    """Processa no máximo um job numa conexão em autocommit. False quando a fila está vazia."""
+    job = pegar_proximo_job(conn)
+    if job is None:
+        return False
+    log.info("job %s (%s) da Conversa %s", job.id, job.tipo, job.conversa_id)
+    try:
+        for evento in executor.executar(job):
+            publicar(conn, job.conversa_id, _persistir(conn, job, evento))
+    except Exception as exc:  # noqa: BLE001 - qualquer falha vira erro do job, não do worker
+        erro = "".join(traceback.format_exception_only(exc)).strip()
+        log.exception("job %s falhou", job.id)
+        concluir_job(conn, job.id, erro=erro)
+        publicar(conn, job.conversa_id, Evento(tipo="error", dados={"mensagem": erro}))
+    else:
+        concluir_job(conn, job.id)
+    return True
 
 
 def rodar_worker(
@@ -71,18 +50,43 @@ def rodar_worker(
     executor: Executor,
     *,
     uma_vez: bool = False,
-    intervalo: float = 0.5,
+    intervalo: float = 5.0,
     parar: threading.Event | None = None,
 ) -> None:
-    """Loop do worker. Com `uma_vez`, processa até esvaziar a fila e volta. Com `parar`,
-    encerra assim que o evento for sinalizado."""
-    while parar is None or not parar.is_set():
-        processou = processar_um_job(conn_string, executor)
-        if processou:
-            continue
-        if uma_vez:
-            return
-        if parar is not None:
-            parar.wait(intervalo)
-        else:
-            time.sleep(intervalo)
+    """Loop do worker. Com `uma_vez`, esvazia a fila e volta; com `parar`, encerra assim que
+    o evento for sinalizado (no máximo `intervalo` segundos depois)."""
+    with conectar(conn_string, autocommit=True) as conn:
+        conn.execute(f"LISTEN {CANAL_DA_FILA}")
+        while parar is None or not parar.is_set():
+            if processar_um_job(conn, executor):
+                continue
+            if uma_vez:
+                return
+            for _ in conn.notifies(timeout=intervalo, stop_after=1):
+                pass
+
+
+def _persistir(conn: psycopg.Connection, job: Job, evento: Evento) -> Evento:
+    """Grava o que o evento exige e devolve o evento pronto para publicar."""
+    dados = evento.dados
+    if evento.tipo == "approval_required":
+        with conn.transaction():
+            aprovacao_id = criar_aprovacao(
+                conn,
+                conversa_id=job.conversa_id,
+                cliente_id=job.payload.get("cliente_id", ""),
+                pedido_id=dados["pedido_id"],
+                valor=dados["valor"],
+                probabilidade=dados["probabilidade"],
+                resumo=dados["resumo"],
+                motivo_do_gate=dados.get("motivo_do_gate"),
+            )
+            atualizar_status(conn, job.conversa_id, "aprovacao_pendente")
+        return evento.model_copy(update={"dados": {**dados, "aprovacao_id": aprovacao_id}})
+    if evento.tipo == "message_done":
+        with conn.transaction():
+            mensagem_id = gravar_mensagem(conn, job.conversa_id, "assistente", dados["conteudo"])
+            status = STATUS_POR_DESFECHO.get(dados.get("desfecho"), "aberta")
+            atualizar_status(conn, job.conversa_id, status)
+        return evento.model_copy(update={"dados": {**dados, "mensagem_id": mensagem_id}})
+    return evento

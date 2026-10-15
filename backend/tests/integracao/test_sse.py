@@ -1,5 +1,5 @@
 """SSE de ponta a ponta: um worker de teste publica por NOTIFY, a API escuta por LISTEN
-e o front recebe os cinco eventos; a reconexão devolve a última mensagem gravada.
+e o front recebe os eventos; a reconexão devolve a última mensagem gravada.
 
 O `ASGITransport` do httpx só devolve a resposta quando o app termina, o que nunca acontece
 num stream aberto; por isso o teste sobe um uvicorn de verdade numa thread.
@@ -19,6 +19,7 @@ from ampere.api.app import criar_app
 from ampere.fila.eventos import Evento
 from ampere.fila.executor import ExecutorFalso
 from ampere.fila.worker import processar_um_job
+from ampere.nucleo.banco import conectar
 from ampere.nucleo.config import Config
 
 pytestmark = pytest.mark.integracao
@@ -33,8 +34,9 @@ def _porta_livre() -> int:
 
 
 @pytest.fixture
-def servidor(banco):
-    app = criar_app(Config(database_url=banco, modelos_falsos=True), verificar_qdrant=lambda: True)
+def servidor(banco, pool):
+    config = Config(database_url=banco, modelos_falsos=True)
+    app = criar_app(config, pool=pool, verificar_qdrant=lambda: True)
     porta = _porta_livre()
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=porta, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
@@ -72,12 +74,23 @@ async def _coletar(resposta: httpx.Response, quantos: int) -> list[tuple[str, di
     return recebidos
 
 
+def _processar_um(banco: str, executor: ExecutorFalso) -> None:
+    with conectar(banco, autocommit=True) as conn:
+        processar_um_job(conn, executor)
+
+
 EVENTOS_DO_PRIMEIRO_JOB = [
     Evento(tipo="token", dados={"texto": "Olá"}),
     Evento(tipo="tool_call", dados={"nome": "consultar_pedido", "args": {"pedido_id": "P-1"}}),
     Evento(
         tipo="approval_required",
-        dados={"pedido_id": "P-1", "valor": 450.0, "probabilidade": 0.9, "resumo": "Acima"},
+        dados={
+            "pedido_id": "P-1",
+            "valor": 450.0,
+            "probabilidade": 0.9,
+            "resumo": "Acima",
+            "motivo_do_gate": "valor_acima_do_limite",
+        },
     ),
     Evento(tipo="message_done", dados={"conteudo": "Olá, seu reembolso aguarda aprovação."}),
 ]
@@ -110,8 +123,9 @@ async def test_sse_recebe_os_cinco_eventos_na_ordem_e_reenvia_ao_reconectar(serv
 
             def worker():
                 executor = _executor_de_teste()
-                assert processar_um_job(banco, executor) is True
-                assert processar_um_job(banco, executor) is True
+                with conectar(banco, autocommit=True) as conn:
+                    assert processar_um_job(conn, executor) is True
+                    assert processar_um_job(conn, executor) is True
 
             thread = threading.Thread(target=worker)
             thread.start()
@@ -157,7 +171,7 @@ async def test_sse_aceita_cliente_id_por_query_string(servidor, banco):
         async with client.stream("GET", rota) as r:
             assert r.status_code == 200
             executor = ExecutorFalso([Evento(tipo="message_done", dados={"conteudo": "olá"})])
-            thread = threading.Thread(target=processar_um_job, args=(banco, executor))
+            thread = threading.Thread(target=_processar_um, args=(banco, executor))
             thread.start()
             recebidos = await asyncio.wait_for(_coletar(r, 1), timeout=10)
             thread.join(timeout=5)

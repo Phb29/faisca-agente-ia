@@ -1,0 +1,36 @@
+# Roteador
+#
+# Depois do Guardrail de entrada, o Jev escolhe uma única intenção para a mensagem do
+# Cliente, e a intenção decide o caminho do grafo:
+#   duvida       busca na Base de Conhecimento e responde, sem executar nenhuma Ação.
+#   transacao    o agente conversa e pode executar as quatro Ações.
+#   quer_humano  abre um Ticket na hora, sem passar pelo modelo.
+#
+# O Jev recebe, além da mensagem, a última resposta do chatbot (para entender respostas
+# curtas como "sim, quero") e um resumo das Conversas anteriores do Cliente (para entender
+# frases como "meu último problema continua"). Ele devolve a escolha e a probabilidade de
+# cada opção; as probabilidades vão para o trace no Langfuse, e mensagens que ficaram na
+# fronteira entre duas intenções são os melhores exemplos para melhorar este texto.
+
+nome: roteador
+versao: 2
+
+regras:
+  intencao:
+    pergunta: >-
+      Qual é a intenção da mensagem do Cliente no suporte da Ampère Eletrônicos? Considere a
+      última resposta do chatbot quando a mensagem for uma continuação, e o resumo das
+      Conversas anteriores quando ela se referir a algo do passado.
+    opcoes:
+      duvida: >-
+        Quer saber uma regra ou informação da Loja: prazo de troca ou devolução, frete,
+        garantia, formas de pagamento, cadastro, política em geral. Não pede que nada seja
+        feito num Pedido específico.
+      transacao: >-
+        Quer que algo seja feito ou verificado num Pedido dele: status, rastreio, reembolso,
+        cancelamento, troca de um item comprado, problema com uma compra. Inclui confirmar
+        uma ação que o chatbot acabou de oferecer.
+      quer_humano: >-
+        Pede explicitamente para falar com uma pessoa, um atendente ou um humano, ou mostra
+        que não quer mais conversar com o chatbot ("quero alguém de verdade", irritação com
+        respostas automáticas).

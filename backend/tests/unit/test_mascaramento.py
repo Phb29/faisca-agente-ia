@@ -38,3 +38,14 @@ def test_mascara_varios_dados_no_mesmo_texto():
     texto = "cpf 123.456.789-09, cartão 4111 1111 1111 1111 e senha: seg"
     esperado = "cpf [CPF MASCARADO], cartão [CARTÃO MASCARADO] e senha: [SENHA MASCARADA]"
     assert mascarar(texto) == esperado
+
+
+def test_mascara_cvv_e_codigo_de_seguranca():
+    assert mascarar("meu cvv é 123") == "meu cvv é [CVV MASCARADO]"
+    assert mascarar("CVV: 4567 ok") == "CVV: [CVV MASCARADO] ok"
+    assert mascarar("código de segurança 987") == "código de segurança [CVV MASCARADO]"
+
+
+def test_mascarar_duas_vezes_nao_muda_nada():
+    texto = "cartão 4111 1111 1111 1111, cvv 123 e senha: abc"
+    assert mascarar(mascarar(texto)) == mascarar(texto)

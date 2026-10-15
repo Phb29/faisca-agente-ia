@@ -20,6 +20,10 @@ _Avoid_: Documentos, corpus, FAQ
 Verificação rápida feita pelo Jev na entrada (mensagem do Cliente) ou na saída (resposta do chatbot) que pode bloquear ou redirecionar a conversa.
 _Avoid_: Filtro, validação, moderação
 
+**Regra**:
+Uma pergunta que o Jev responde para decidir algo (um Guardrail, o Roteador ou o Gate de Aprovação), escrita em linguagem natural com quando a resposta é sim, quando é não e o que acontece quando ela dispara.
+_Avoid_: Policy, prompt do Jev, critério
+
 **Roteador**:
 Decisão do Jev sobre a intenção da mensagem do Cliente, que define qual caminho do grafo será seguido.
 _Avoid_: Classificador, intent detector
@@ -41,7 +45,7 @@ Encerrar a Conversa com a necessidade do Cliente atendida sem criar um Ticket.
 _Avoid_: Finalizar, fechar
 
 **Escalar**:
-Criar um Ticket e encerrar a participação do chatbot na Conversa.
+Criar um Ticket e encerrar a participação do chatbot na Conversa, porque o Cliente pediu uma pessoa ou porque o Guardrail de saída reprovou a resposta duas vezes.
 _Avoid_: Transferir, encaminhar
 
 **Ação**:
