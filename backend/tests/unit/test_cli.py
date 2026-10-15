@@ -34,8 +34,9 @@ def test_sem_salvar_chega_ao_salvar(monkeypatch):
     salvos = _capturar_salvos(monkeypatch)
     monkeypatch.setattr("ampere.evals.calibracao.rodar", lambda config, *, seed: RELATORIO)
 
-    CliRunner().invoke(cli.evals, ["calibracao", "--sem-salvar"])
+    resultado = CliRunner().invoke(cli.evals, ["calibracao", "--sem-salvar"])
 
+    assert resultado.exit_code == 0, resultado.output
     assert salvos == [("juiz", RELATORIO, True)]
 
 
@@ -52,14 +53,27 @@ def test_rodada_parcial_do_rag_nao_e_gravada(monkeypatch):
     assert "não é gravada" in resultado.output
 
 
+def test_amostra_zero_tambem_e_parcial(monkeypatch):
+    salvos = _capturar_salvos(monkeypatch)
+    monkeypatch.setattr(
+        "ampere.evals.rag.rodar", lambda config, *, so_retrieval, amostra: RELATORIO
+    )
+
+    resultado = CliRunner().invoke(cli.evals, ["rag", "--amostra", "0"])
+
+    assert resultado.exit_code == 0, resultado.output
+    assert salvos == []
+
+
 def test_rag_completo_grava_como_eval_rag(monkeypatch):
     salvos = _capturar_salvos(monkeypatch)
     monkeypatch.setattr(
         "ampere.evals.rag.rodar", lambda config, *, so_retrieval, amostra: RELATORIO
     )
 
-    CliRunner().invoke(cli.evals, ["rag", "--so-retrieval"])
+    resultado = CliRunner().invoke(cli.evals, ["rag", "--so-retrieval"])
 
+    assert resultado.exit_code == 0, resultado.output
     assert salvos == [("rag", RELATORIO, False)]
 
 

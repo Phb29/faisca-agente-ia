@@ -131,7 +131,7 @@ def evals_rag(
     from ampere.evals.rag import rodar
 
     relatorio = rodar(config(), so_retrieval=so_retrieval, amostra=amostra)
-    if amostra:
+    if amostra is not None:
         typer.echo("execução parcial (--amostra) não é gravada")
         return
     _salvar("rag", relatorio, sem_salvar=sem_salvar)
@@ -148,7 +148,7 @@ def evals_agente(
 
     cfg = config()
     relatorio = rodar(cfg, Sistema(cfg), amostra=amostra)
-    if amostra:
+    if amostra is not None:
         typer.echo("execução parcial (--amostra) não é gravada")
         return
     _salvar("agente", relatorio, sem_salvar=sem_salvar)
