@@ -109,3 +109,47 @@ class Cenario:
 
 def ultima_resposta(estado: dict) -> str:
     return estado["messages"][-1].content
+
+
+def composicao_falsa(
+    *,
+    gerador: list | None = None,
+    juiz: list | None = None,
+    jev: JevFalso | None = None,
+    config: Config | None = None,
+):
+    """O que a raiz de composição entrega aos evals, com modelos e Jev falsos e o retriever
+    falso: o grafo de verdade, o juiz, o gerador e o retriever."""
+    config = config or Config(modelos_falsos=True)
+    fabrica = FabricaDeModelos(
+        config,
+        gerador=ModeloFalso(gerador or ["Resposta padrão."]),
+        juiz=ModeloFalso(juiz or []),
+        jev=jev or JevFalso(choices={"intencao": "duvida"}),
+    )
+    retriever = RetrieverFalso([CHUNK_GARANTIA])
+    observabilidade = Observabilidade(config)
+
+    class ComposicaoFalsa:
+        def __init__(self) -> None:
+            self.observabilidade = observabilidade
+            self.retriever = retriever
+
+        def juiz(self):
+            return fabrica.juiz()
+
+        def gerador(self):
+            return fabrica.gerador()
+
+        def construir_grafo(self, *, pedidos, tickets, checkpointer, store):
+            deps = Dependencias(
+                config=config,
+                fabrica=fabrica,
+                retriever=retriever,
+                pedidos=pedidos,
+                tickets=tickets,
+                observabilidade=observabilidade,
+            )
+            return construir_grafo(deps, checkpointer=checkpointer, store=store)
+
+    return ComposicaoFalsa()

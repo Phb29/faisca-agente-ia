@@ -4,13 +4,14 @@ import random
 
 import pytest
 
-from ampere.evals import rag
+from ampere.evals import agente, rag
 from ampere.evals.juiz import Veredito
 from ampere.evals.relatorio import Sorteado, caso_com_erro, consumir, contexto_base, media
 from ampere.nucleo.config import Config
-from ampere.nucleo.falsos import ModeloFalso
+from ampere.nucleo.falsos import JevFalso, ModeloFalso
 from ampere.rag.busca import RetrieverFalso
 from ampere.rag.chunkers import Chunk
+from tests.apoio import composicao_falsa, tool_call
 
 
 def chunk(documento: str, texto: str = "trecho") -> Chunk:
@@ -207,3 +208,165 @@ def test_caso_ao_vivo_rag_solta_busca_resposta_e_juiz():
     assert caso["resposta"] == "Você tem 7 dias."
     assert caso["fidelidade"]["critica"] == "fiel"
     assert caso["relevancia"]["critica"] == "relevante"
+
+
+# --- agente -----------------------------------------------------------------------------------
+
+
+def cenario_ag(id: str, intencao: str | None, *, bloqueia: bool = False, **extras):
+    base = dict(
+        id=id,
+        mensagem=f"mensagem {id}",
+        cliente_id="cli_ana",
+        intencao_esperada=intencao,
+        acao_esperada="consultar_base_de_conhecimento",
+        desfecho_esperado="Resolvida",
+        guardrail_bloqueia=bloqueia,
+    )
+    return agente.Cenario(**{**base, **extras})
+
+
+def test_grupo_do_cenario_e_bloqueio_ou_a_intencao_esperada():
+    assert agente.grupo_do_cenario(cenario_ag("b", None, bloqueia=True)) == "bloqueio"
+    assert agente.grupo_do_cenario(cenario_ag("d", "duvida")) == "duvida"
+    assert agente.grupo_do_cenario(cenario_ag("q", "quer_humano")) == "quer_humano"
+
+
+def test_sortear_amostra_do_agente_pega_um_de_cada_grupo():
+    cenarios = [
+        cenario_ag("d1", "duvida"),
+        cenario_ag("d2", "duvida"),
+        cenario_ag("t1", "transacao"),
+        cenario_ag("q1", "quer_humano"),
+        cenario_ag("b1", None, bloqueia=True),
+    ]
+
+    for seed in range(8):
+        sorteados = agente.sortear_amostra(random.Random(seed), cenarios)
+
+        assert [s.grupo for s in sorteados][:2] == ["duvida", "transacao"]
+        assert sorteados[2].grupo in {"bloqueio", "quer_humano"}
+        assert all(s.id == s.item.id and s.texto == s.item.mensagem for s in sorteados)
+
+
+def test_sortear_amostra_do_agente_funciona_com_o_golden_real():
+    assert len(agente.sortear_amostra(random.Random(1))) == 3
+
+
+def test_caso_e_resumo_do_agente():
+    certo = agente.ResultadoDoCenario(
+        cenario=cenario_ag("ag01", "duvida"),
+        comparacao=agente.Comparacao(
+            intencao_ok=True,
+            acao_ok=True,
+            desfecho_ok=True,
+            intencao="duvida",
+            acao="consultar_base_de_conhecimento",
+            desfecho="Resolvida",
+            bloqueado=False,
+        ),
+        resposta="12 meses.",
+        veredito=Veredito(aprovada=True, critica="resolveu"),
+        caminho=["carregar_memoria", "roteador"],
+        duracao_s=2.345,
+    )
+    errado = agente.ResultadoDoCenario(
+        cenario=cenario_ag("ag11", "transacao", acao_esperada="emitir_reembolso"),
+        comparacao=agente.Comparacao(
+            intencao_ok=True,
+            acao_ok=False,
+            desfecho_ok=False,
+            intencao="transacao",
+            acao="consultar_pedido",
+            desfecho="Resolvida",
+            bloqueado=False,
+        ),
+        resposta="Quer que eu peça o reembolso?",
+        veredito=None,
+    )
+
+    caso = agente.caso_agente(certo)
+    resumo = agente.resumo_agente(
+        [caso, agente.caso_agente(errado), {"id": "ag16", "erro": "Jev fora"}]
+    )
+
+    assert caso["id"] == "ag01"
+    assert caso["texto"] == "mensagem ag01"
+    assert caso["grupo"] == "duvida"
+    assert caso["esperado"] == {
+        "intencao": "duvida",
+        "acao": "consultar_base_de_conhecimento",
+        "desfecho": "Resolvida",
+    }
+    assert caso["ok"] == {"intencao": True, "acao": True, "desfecho": True}
+    assert caso["caminho"] == ["carregar_memoria", "roteador"]
+    assert caso["juiz"] == {"aprovada": True, "critica": "resolveu"}
+    assert caso["duracao_s"] == 2.35
+    assert resumo == {
+        "n": 2,
+        "erros": 1,
+        "intencao": 1.0,
+        "acao": 0.5,
+        "desfecho": 0.5,
+        "tudo": 0.5,
+        "juiz_aprovadas": 1,
+        "julgados": 1,
+    }
+
+
+def test_passos_do_cenario_soltam_cada_no_e_o_juiz_e_guardam_o_caminho():
+    composicao = composicao_falsa(
+        gerador=["A garantia de notebooks é de 12 meses."],
+        juiz=[Veredito(aprovada=True, critica="resolveu")],
+    )
+    cenario = cenario_ag("duvida-01", "duvida", mensagem="qual a garantia do notebook?")
+
+    fases, resultado = rodar_passos(
+        agente.ExecutorDeCenarios(Config(modelos_falsos=True), composicao).passos(cenario)
+    )
+
+    assert fases[0] == "carregar_memoria"
+    assert fases[-1] == "juiz"
+    assert fases[:-1] == resultado.caminho
+    assert "gerar_resposta" in resultado.caminho
+    assert resultado.comparacao.tudo_ok
+    assert resultado.veredito == Veredito(aprovada=True, critica="resolveu")
+    assert resultado.duracao_s > 0
+
+
+def test_passos_do_cenario_veem_a_interrupcao_do_gate_como_aprovacao_pendente():
+    composicao = composicao_falsa(
+        gerador=[tool_call("emitir_reembolso", {"pedido_id": "P1001", "motivo": "tela"})],
+        jev=JevFalso(choices={"intencao": "transacao"}),
+    )
+    cenario = cenario_ag(
+        "ag11",
+        "transacao",
+        mensagem="Quero o reembolso do pedido P1001",
+        acao_esperada="emitir_reembolso",
+        desfecho_esperado="Aprovação Pendente",
+    )
+
+    fases, resultado = rodar_passos(
+        agente.ExecutorDeCenarios(Config(modelos_falsos=True), composicao).passos(cenario)
+    )
+
+    assert resultado.comparacao.desfecho == "Aprovação Pendente"
+    assert resultado.comparacao.desfecho_ok
+    assert "__interrupt__" not in resultado.caminho
+    assert "juiz" not in fases, "sem resposta final, o juiz não tem o que ler"
+
+
+def test_caso_ao_vivo_do_agente_devolve_o_caso_pronto():
+    composicao = composicao_falsa(
+        gerador=["12 meses."], juiz=[Veredito(aprovada=True, critica="ok")]
+    )
+    cenario = cenario_ag("ag01", "duvida", mensagem="qual a garantia do notebook?")
+    sorteado = Sorteado(id="ag01", texto=cenario.mensagem, grupo="duvida", item=cenario)
+    executor = agente.ExecutorDeCenarios(Config(modelos_falsos=True), composicao)
+
+    fases, caso = rodar_passos(agente.caso_ao_vivo(sorteado, executor))
+
+    assert fases[-1] == "juiz"
+    assert caso["id"] == "ag01"
+    assert caso["juiz"] == {"aprovada": True, "critica": "ok"}

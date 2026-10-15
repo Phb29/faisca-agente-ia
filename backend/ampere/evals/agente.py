@@ -4,12 +4,18 @@ Intenção, Ação e desfecho são comparados por código com o estado final do 
 final passa pelo juiz (`julgar_resolucao`). O grafo roda com modelos e Jev reais, retriever
 do Qdrant, e checkpointer, Store, Pedidos e Tickets em memória (um conjunto novo por
 cenário, para um cenário não contaminar o outro).
+
+Os passos de cada cenário soltam o nome de cada nó quando ele começa, para a amostra ao
+vivo mostrar o grafo andando (ver `ampere.evals.ao_vivo`), e `rodar` devolve o relatório
+que o CLI grava.
 """
 
 import csv
+import random
 import re
-from collections.abc import Sequence
-from dataclasses import dataclass
+import time
+from collections.abc import Generator, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 from uuid import uuid4
@@ -24,6 +30,7 @@ from pydantic import BaseModel, field_validator
 
 from ampere.acoes.ticket import StoreDeTickets, StoreDeTicketsEmMemoria
 from ampere.evals.juiz import Veredito, julgar_resolucao
+from ampere.evals.relatorio import PassosDoCaso, Relatorio, Sorteado, consumir, contexto_base
 from ampere.loja.pedidos import Pedido, Reembolso, StoreDePedidos, StoreDePedidosEmMemoria
 from ampere.loja.seed import PEDIDOS, REEMBOLSOS
 from ampere.memoria.procedural import escrever_procedural
@@ -37,6 +44,16 @@ NOME_DATASET = "golden_agente"
 SEM_ACAO = "nenhuma"
 APROVACAO_PENDENTE = "Aprovação Pendente"
 VERDADEIROS = {"sim", "s", "true", "1", "verdadeiro", "yes"}
+PROMPTS_DO_AGENTE = (
+    "agente",
+    "gerar_resposta",
+    "self_querying",
+    "extrair_memorias",
+    "resumir_conversa",
+    "resumir_ticket",
+    "juiz_resolucao",
+)
+GRUPOS_DA_AMOSTRA = (("duvida",), ("transacao",), ("bloqueio", "quer_humano"))
 
 
 class Cenario(BaseModel):
@@ -152,24 +169,8 @@ class ResultadoDoCenario:
     comparacao: Comparacao
     resposta: str
     veredito: Veredito | None
-
-    def linha(self) -> dict:
-        return {
-            "id": self.cenario.id,
-            "intencao_esperada": self.cenario.intencao_esperada,
-            "intencao": self.comparacao.intencao,
-            "intencao_ok": self.comparacao.intencao_ok,
-            "acao_esperada": self.cenario.acao_esperada,
-            "acao": self.comparacao.acao,
-            "acao_ok": self.comparacao.acao_ok,
-            "desfecho_esperado": self.cenario.desfecho_esperado,
-            "desfecho": self.comparacao.desfecho,
-            "desfecho_ok": self.comparacao.desfecho_ok,
-            "bloqueado": self.comparacao.bloqueado,
-            "resposta": self.resposta,
-            "aprovada": self.veredito.aprovada if self.veredito else None,
-            "critica": self.veredito.critica if self.veredito else None,
-        }
+    caminho: list[str] = field(default_factory=list)
+    duracao_s: float = 0.0
 
 
 class ExecutorDeCenarios:
@@ -182,6 +183,13 @@ class ExecutorDeCenarios:
         self.embed = criar_embedder("minilm", config).embed
 
     def executar(self, cenario: Cenario) -> ResultadoDoCenario:
+        return consumir(self.passos(cenario))
+
+    def passos(self, cenario: Cenario) -> Generator[str, None, ResultadoDoCenario]:
+        """Roda o cenário soltando o nome de cada nó do grafo quando ele começa e, no fim,
+        "juiz" antes do veredito. O estado final é o mesmo que o `invoke` devolveria: o
+        snapshot do checkpointer mais a interrupção do Gate, que só chega pelo stream."""
+        inicio = time.perf_counter()
         store = criar_store_em_memoria(self.embed)
         iniciais = interpretar_memorias(cenario.memorias)
         for fato in iniciais.semantica:
@@ -204,25 +212,50 @@ class ExecutorDeCenarios:
         callback = self.observabilidade.callback()
         if callback is not None:
             invocacao["callbacks"] = [callback]
+        caminho: list[str] = []
+        interrupcao: Any = None
         with self.observabilidade.contexto_da_conversa(
             conversa_id, cenario.cliente_id, tags=["eval", "golden_agente"]
         ):
-            estado = grafo.invoke(
+            fluxo = grafo.stream(
                 {
                     "messages": [HumanMessage(cenario.mensagem)],
                     "cliente_id": cenario.cliente_id,
                     "conversa_id": conversa_id,
                 },
                 invocacao,
+                stream_mode=["tasks", "updates"],
             )
+            for modo, pedaco in fluxo:
+                if modo == "tasks":
+                    # O evento de início traz `input`; o de fim traz `result` ou `error`.
+                    if "input" in pedaco and not pedaco["name"].startswith("__"):
+                        yield pedaco["name"]
+                    continue
+                for no, valor in pedaco.items():
+                    if no == "__interrupt__":
+                        interrupcao = valor
+                    else:
+                        caminho.append(no)
+        estado = dict(grafo.get_state(invocacao).values)
+        if interrupcao:
+            estado["__interrupt__"] = interrupcao
         comparacao = comparar(cenario, estado)
         resposta = resposta_final(estado)
         veredito = None
         if resposta:
+            yield "juiz"
             veredito = julgar_resolucao(
                 self.composicao.juiz(), mensagem=cenario.mensagem, resposta=resposta
             )
-        return ResultadoDoCenario(cenario, comparacao, resposta, veredito)
+        return ResultadoDoCenario(
+            cenario,
+            comparacao,
+            resposta,
+            veredito,
+            caminho=caminho,
+            duracao_s=time.perf_counter() - inicio,
+        )
 
 
 class Composicao(Protocol):
@@ -244,7 +277,79 @@ class Composicao(Protocol):
     ) -> CompiledStateGraph: ...
 
 
-def rodar(config: Config, composicao: Composicao, *, amostra: int | None = None) -> list[dict]:
+# --- relatório e amostra ao vivo ------------------------------------------------------------
+
+
+def grupo_do_cenario(cenario: Cenario) -> str:
+    if cenario.guardrail_bloqueia:
+        return "bloqueio"
+    return cenario.intencao_esperada or "bloqueio"
+
+
+def caso_agente(resultado: ResultadoDoCenario) -> dict:
+    cenario, c = resultado.cenario, resultado.comparacao
+    return {
+        "id": cenario.id,
+        "texto": cenario.mensagem,
+        "grupo": grupo_do_cenario(cenario),
+        "mensagem": cenario.mensagem,
+        "esperado": {
+            "intencao": cenario.intencao_esperada,
+            "acao": cenario.acao_esperada,
+            "desfecho": cenario.desfecho_esperado,
+        },
+        "obtido": {"intencao": c.intencao, "acao": c.acao, "desfecho": c.desfecho},
+        "ok": {"intencao": c.intencao_ok, "acao": c.acao_ok, "desfecho": c.desfecho_ok},
+        "bloqueado": c.bloqueado,
+        "caminho": list(resultado.caminho),
+        "resposta": resultado.resposta,
+        "juiz": resultado.veredito.model_dump() if resultado.veredito else None,
+        "duracao_s": round(resultado.duracao_s, 2),
+        "erro": None,
+    }
+
+
+def resumo_agente(casos: Sequence[dict]) -> dict:
+    """Taxas de acerto sobre os casos sem erro; `erros` conta os que falharam."""
+    validos = [c for c in casos if not c.get("erro")]
+    n = len(validos)
+
+    def taxa(chave: str) -> float:
+        return sum(c["ok"][chave] for c in validos) / n if n else 0.0
+
+    julgados = [c for c in validos if c["juiz"] is not None]
+    return {
+        "n": n,
+        "erros": len(casos) - n,
+        "intencao": taxa("intencao"),
+        "acao": taxa("acao"),
+        "desfecho": taxa("desfecho"),
+        "tudo": sum(all(c["ok"].values()) for c in validos) / n if n else 0.0,
+        "juiz_aprovadas": sum(c["juiz"]["aprovada"] for c in julgados),
+        "julgados": len(julgados),
+    }
+
+
+def sortear_amostra(
+    rng: random.Random, cenarios: Sequence[Cenario] | None = None
+) -> list[Sorteado]:
+    """Um cenário de dúvida, um de transação e um de bloqueio ou de pedido de humano."""
+    cenarios = list(cenarios) if cenarios is not None else carregar_golden_agente()
+    escolhidos = [
+        rng.choice([c for c in cenarios if grupo_do_cenario(c) in grupos])
+        for grupos in GRUPOS_DA_AMOSTRA
+    ]
+    return [
+        Sorteado(id=c.id, texto=c.mensagem, grupo=grupo_do_cenario(c), item=c) for c in escolhidos
+    ]
+
+
+def caso_ao_vivo(sorteado: Sorteado, executor: ExecutorDeCenarios) -> PassosDoCaso:
+    resultado = yield from executor.passos(sorteado.item)
+    return caso_agente(resultado)
+
+
+def rodar(config: Config, composicao: Composicao, *, amostra: int | None = None) -> Relatorio:
     from rich.console import Console
     from rich.table import Table
 
@@ -279,7 +384,9 @@ def rodar(config: Config, composicao: Composicao, *, amostra: int | None = None)
         _publicar(cliente, resultados)
         console.print("[dim]Langfuse: dataset e run publicados.")
     executor.observabilidade.encerrar()
-    return [r.linha() for r in resultados]
+    casos = [caso_agente(r) for r in resultados]
+    contexto = contexto_base(config, prompts=PROMPTS_DO_AGENTE, n=len(resultados))
+    return Relatorio(contexto, resumo_agente(casos), casos)
 
 
 def _resumo(resultados: Sequence[ResultadoDoCenario]) -> str:
