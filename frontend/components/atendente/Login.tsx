@@ -12,10 +12,17 @@ type Props = {
   /** Motivo de ter voltado ao login (ex.: token expirado). */
   aviso: string | null;
   aoEntrar: (token: string) => void;
+  titulo?: string;
+  descricao?: string;
 };
 
 /** O token é conferido na hora contra a API, antes de ser guardado. */
-export function Login({ aviso, aoEntrar }: Props) {
+export function Login({
+  aviso,
+  aoEntrar,
+  titulo = "Central do Atendente",
+  descricao = "Aprovações de Reembolso, Tickets e a Memória Procedural de cada Cliente.",
+}: Props) {
   const id = useId();
   const [token, setToken] = useState("");
   const [verificando, setVerificando] = useState(false);
@@ -47,10 +54,8 @@ export function Login({ aviso, aoEntrar }: Props) {
           className="animate-surgir rounded-3xl bg-surface p-8 shadow-flutuante ring-1 ring-line"
         >
           <Marca tamanho="lg" />
-          <h1 className="mt-6 font-display text-[30px] leading-[1.1] font-semibold tracking-[-0.03em]">Central do Atendente</h1>
-          <p className="mt-2 text-[14.5px] leading-relaxed text-muted">
-            Aprovações de Reembolso, Tickets e a Memória Procedural de cada Cliente.
-          </p>
+          <h1 className="mt-6 font-display text-[30px] leading-[1.1] font-semibold tracking-[-0.03em]">{titulo}</h1>
+          <p className="mt-2 text-[14.5px] leading-relaxed text-muted">{descricao}</p>
 
           {mensagem && <Aviso className="mt-5">{mensagem}</Aviso>}
 

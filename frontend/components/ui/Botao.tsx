@@ -3,11 +3,12 @@ import type { LucideIcon } from "lucide-react";
 import { cx } from "@/lib/cx";
 import { Carregando } from "./Carregando";
 
-type Variante = "primario" | "secundario" | "fantasma" | "perigo";
+type Variante = "primario" | "volt" | "secundario" | "fantasma" | "perigo";
 type Tamanho = "sm" | "md" | "lg";
 
 const VARIANTES: Record<Variante, string> = {
   primario: "bg-ink text-canvas shadow-suave hover:bg-ink-2 disabled:bg-line-strong disabled:text-muted",
+  volt: "bg-volt text-noite ring-1 ring-inset ring-volt-forte shadow-suave hover:brightness-95 disabled:opacity-60",
   secundario:
     "bg-surface text-ink ring-1 ring-inset ring-line shadow-suave hover:bg-surface-2 hover:ring-line-strong disabled:text-muted",
   fantasma: "text-ink-2 hover:bg-canvas-2 hover:text-ink disabled:text-muted",
