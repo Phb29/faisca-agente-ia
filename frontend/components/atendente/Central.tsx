@@ -86,11 +86,11 @@ export function Central({ token, aoSair }: Props) {
               <Ponto tom={erroDaSondagem ? "perigo" : "volt"} pulsando={!erroDaSondagem} />
               {erroDaSondagem ? "Sem conexão" : "Ao vivo"}
             </span>
-            <Link href="/avaliacao" className={estiloDeBotao("fantasma", "sm")}>
+            <Link href="/avaliacao" aria-label="Avaliação" className={estiloDeBotao("fantasma", "sm")}>
               <Activity aria-hidden className="size-4" strokeWidth={1.8} />
               <span className="hidden sm:inline">Avaliação</span>
             </Link>
-            <Link href="/" className={estiloDeBotao("fantasma", "sm")}>
+            <Link href="/" aria-label="Abrir o chat" className={estiloDeBotao("fantasma", "sm")}>
               <MessageSquare aria-hidden className="size-4" strokeWidth={1.8} />
               <span className="hidden sm:inline">Abrir o chat</span>
             </Link>

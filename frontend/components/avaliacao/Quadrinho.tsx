@@ -41,7 +41,8 @@ export function Quadrinho({
   );
 }
 
-const CONFERENCIAS = [
+/** As três conferências esperado-contra-obtido de um cenário do agente: usadas aqui e na gaveta de detalhe. */
+export const CONFERENCIAS = [
   ["intencao", "Intenção"],
   ["acao", "Ação"],
   ["desfecho", "Desfecho"],

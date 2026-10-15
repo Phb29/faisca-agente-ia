@@ -43,7 +43,7 @@ export function CabecalhoDaAba(props: Props) {
             <select
               value={selecionadaId ?? ""}
               onChange={(evento) => aoEscolher(evento.target.value)}
-              className="h-10 max-w-[360px] rounded-xl bg-surface pr-8 pl-3 text-[13px] text-ink-2 shadow-suave ring-1 ring-line outline-none ring-inset focus-visible:ring-ink/40"
+              className="h-10 max-w-[420px] rounded-xl bg-surface pr-8 pl-3 text-[13px] text-ink-2 shadow-suave ring-1 ring-line outline-none ring-inset focus-visible:ring-ink/40"
             >
               {selecionadaId === null && <option value="">escolha uma execução</option>}
               {opcoes.map((execucao) => (
@@ -64,7 +64,7 @@ function BotaoAoVivo({ nome, botao, aoDisparar, aoIrPara }: Props) {
   if (botao.tipo === "ocupado") {
     return (
       <Botao variante="secundario" icone={ArrowRight} onClick={() => aoIrPara(botao.por)}>
-        Amostra do {TEXTOS[botao.por].rotulo} rodando · ver
+        Amostra {TEXTOS[botao.por].comArtigo} rodando · ver
       </Botao>
     );
   }

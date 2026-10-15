@@ -10,6 +10,7 @@ import { useRecurso } from "@/hooks/useRecurso";
 import { Botao, estiloDeBotao } from "@/components/ui/Botao";
 import { Logotipo } from "@/components/ui/Marca";
 import { NotificacaoFlutuante, type Notificacao } from "@/components/ui/Notificacao";
+import { Ponto } from "@/components/ui/Pilula";
 import { Segmentos } from "@/components/ui/Segmentos";
 import { PainelDoEval } from "./PainelDoEval";
 
@@ -66,6 +67,8 @@ export function Avaliacao({ token, aoSair }: Props) {
       if (evento.metaKey || evento.ctrlKey || evento.altKey) return;
       const alvo = evento.target as HTMLElement | null;
       if (alvo && (alvo.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(alvo.tagName))) return;
+      // Com a gaveta de detalhe aberta, o foco costuma estar no body: não trocar de aba atrás dela.
+      if (document.querySelector('[aria-modal="true"]')) return;
       const indice = ["1", "2", "3"].indexOf(evento.key);
       if (indice >= 0) trocarAba(ABAS[indice]);
     };
@@ -76,7 +79,7 @@ export function Avaliacao({ token, aoSair }: Props) {
   return (
     <div className="min-h-dvh">
       <header className="sticky top-0 z-30 border-b border-line bg-canvas/85 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-[1320px] items-center gap-4 px-5">
+        <div className="mx-auto flex min-h-14 max-w-[1320px] flex-wrap items-center gap-x-4 gap-y-2 px-5 py-2 2xl:max-w-[1600px]">
           <Logotipo />
           <span aria-hidden className="hidden h-5 w-px bg-line sm:block" />
           <Segmentos
@@ -93,28 +96,36 @@ export function Avaliacao({ token, aoSair }: Props) {
               ),
             }))}
           />
-          <div className="ml-auto flex items-center gap-1.5">
-            <Link href="/atendente" className={estiloDeBotao("fantasma", "sm")}>
-              <Headset aria-hidden className="size-4" strokeWidth={1.8} />
-              <span className="hidden md:inline">Central do Atendente</span>
-            </Link>
-            <Link href="/" className={estiloDeBotao("fantasma", "sm")}>
-              <MessageSquare aria-hidden className="size-4" strokeWidth={1.8} />
-              <span className="hidden md:inline">Abrir o chat</span>
-            </Link>
-            <Botao variante="fantasma" tamanho="sm" icone={LogOut} onClick={() => aoSair()}>
-              Sair
-            </Botao>
+          <div className="ml-auto flex items-center gap-3">
+            <span className="sobretitulo hidden items-center gap-2 md:flex" title="Atualiza a cada 5 segundos">
+              <Ponto tom={amostra.erro ? "perigo" : "volt"} pulsando={!amostra.erro} />
+              {amostra.erro ? "Sem conexão" : "Ao vivo"}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <Link href="/atendente" aria-label="Central do Atendente" className={estiloDeBotao("fantasma", "sm")}>
+                <Headset aria-hidden className="size-4" strokeWidth={1.8} />
+                <span className="hidden md:inline">Central do Atendente</span>
+              </Link>
+              <Link href="/" aria-label="Abrir o chat" className={estiloDeBotao("fantasma", "sm")}>
+                <MessageSquare aria-hidden className="size-4" strokeWidth={1.8} />
+                <span className="hidden md:inline">Abrir o chat</span>
+              </Link>
+              <Botao variante="fantasma" tamanho="sm" icone={LogOut} aria-label="Sair" onClick={() => aoSair()}>
+                <span className="hidden sm:inline">Sair</span>
+              </Botao>
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1320px] px-5 pb-20">
+      <main className="mx-auto max-w-[1320px] px-5 pb-20 2xl:max-w-[1600px]">
         <PainelDoEval
           key={aba}
           nome={aba}
           token={token}
-          amostraGlobal={amostra.dados}
+          // Com a sondagem falhando, o último valor fica velho: melhor não mostrar o botão
+          // "rodando" de um eval que pode já ter terminado.
+          amostraGlobal={amostra.erro ? null : amostra.dados}
           recarregarAmostraGlobal={amostra.recarregar}
           aoIrPara={trocarAba}
           aoFalhar={aoFalhar}

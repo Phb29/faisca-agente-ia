@@ -20,7 +20,8 @@ export function FaixaAoVivo({ nome, estado, aoAbrirCaso, aoDispensar }: Props) {
   const fim = terminada(estado.status);
   const prontos = estado.cartoes.filter((c) => c.estado === "pronto").length;
   const meio = estado.cartoes.some((c) => c.estado === "rodando") ? 0.5 : 0;
-  const progresso = fim ? 100 : ((prontos + meio) / TAMANHO_DA_AMOSTRA) * 100;
+  // Só a conclusão de verdade enche a barra: um erro no meio do caminho mostra o quanto deu.
+  const progresso = estado.status === "concluida" ? 100 : ((prontos + meio) / TAMANHO_DA_AMOSTRA) * 100;
 
   return (
     <section
@@ -37,14 +38,18 @@ export function FaixaAoVivo({ nome, estado, aoAbrirCaso, aoDispensar }: Props) {
         </h2>
         <span className="font-mono text-[11px] text-noite-muted">mesma fila e mesmo stream do chat</span>
         <div className="ml-auto flex items-center gap-3 font-mono text-[11px] text-noite-muted">
-          {estado.conexao === "reconectando" && <span className="text-volt">reconectando…</span>}
+          {estado.conexao === "reconectando" && (
+            <span role="status" className="text-volt">
+              reconectando…
+            </span>
+          )}
           <Tempo estado={estado} />
           {fim && (
             <button
               type="button"
               onClick={aoDispensar}
               aria-label="Fechar a faixa da amostra"
-              className="rounded-md p-1 transition-colors hover:bg-noite-2 hover:text-noite-texto"
+              className="rounded-md p-1 transition-colors hover:bg-noite-2 hover:text-noite-texto focus-visible:outline-volt"
             >
               <X aria-hidden className="size-4" />
             </button>
@@ -52,8 +57,15 @@ export function FaixaAoVivo({ nome, estado, aoAbrirCaso, aoDispensar }: Props) {
         </div>
       </div>
 
-      <div aria-hidden className="mt-3 h-[3px] overflow-hidden rounded-full bg-noite-line">
-        <span className="block h-full bg-volt transition-[width] duration-500" style={{ width: `${progresso}%` }} />
+      <div
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={TAMANHO_DA_AMOSTRA}
+        aria-valuenow={prontos}
+        aria-valuetext={`${prontos} de ${TAMANHO_DA_AMOSTRA} prontos`}
+        className="mt-3 h-[3px] overflow-hidden rounded-full bg-noite-line"
+      >
+        <span aria-hidden className="block h-full bg-volt transition-[width] duration-500" style={{ width: `${progresso}%` }} />
       </div>
 
       <ol className="mt-4 grid gap-3 md:grid-cols-3">
@@ -96,7 +108,8 @@ function Tempo({ estado }: { estado: AoVivo }) {
 
   if (fim) {
     const total = estado.cartoes.reduce((soma, c) => soma + (c.caso?.duracao_s ?? 0), 0);
-    return <span>{segundos(total)} no total</span>;
+    // Parou antes do 1º caso: não tem total nenhum para mostrar.
+    return total > 0 ? <span>{segundos(total)} no total</span> : null;
   }
   if (!estado.iniciadaEm) return <span>na fila</span>;
   return <span>{relogio(agora - new Date(estado.iniciadaEm).getTime())}</span>;
@@ -115,7 +128,7 @@ function CartaoDoCaso({ nome, cartao, aoAbrir }: { nome: NomeDoEval; cartao: Car
       </span>
       <span
         className={cx(
-          "mt-2 mb-3 line-clamp-3 block text-[13.5px] leading-snug",
+          "mt-2 mb-3 line-clamp-3 text-[13.5px] leading-snug",
           cartao.estado === "aguardando" ? "text-noite-muted" : "text-noite-texto",
         )}
       >
@@ -130,7 +143,11 @@ function CartaoDoCaso({ nome, cartao, aoAbrir }: { nome: NomeDoEval; cartao: Car
   );
   if (!caso) return <div className={classes}>{corpo}</div>;
   return (
-    <button type="button" onClick={() => aoAbrir(caso)} className={cx(classes, "transition-colors hover:bg-noite-line")}>
+    <button
+      type="button"
+      onClick={() => aoAbrir(caso)}
+      className={cx(classes, "transition-colors hover:bg-noite-line focus-visible:outline-volt")}
+    >
       {corpo}
     </button>
   );

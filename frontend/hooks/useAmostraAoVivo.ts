@@ -126,6 +126,10 @@ export function useAmostraAoVivo(token: string, nome: NomeDoEval, opcoes: Opcoes
   const [disparando, setDisparando] = useState(false);
   const fecharStream = useRef<(() => void) | null>(null);
   const dispensadas = useRef(new Set<string>());
+  // Qual execução o stream já atende: a sondagem de 5 s e o POST de `disparar` podem chegar
+  // quase juntos com o mesmo id, e sem isso o segundo `conectar` reabriria o stream à toa,
+  // zerando os cartões por um instante.
+  const conectadaId = useRef<string | null>(null);
   const opcoesAtuais = useRef(opcoes);
   useEffect(() => {
     opcoesAtuais.current = opcoes;
@@ -150,6 +154,8 @@ export function useAmostraAoVivo(token: string, nome: NomeDoEval, opcoes: Opcoes
   const conectar = useCallback(
     (execucaoId: string) => {
       if (!montado.current || dispensadas.current.has(execucaoId)) return;
+      if (conectadaId.current === execucaoId) return;
+      conectadaId.current = execucaoId;
       fecharStream.current?.();
       setEstado({
         execucaoId,
@@ -222,6 +228,7 @@ export function useAmostraAoVivo(token: string, nome: NomeDoEval, opcoes: Opcoes
     if (estado) dispensadas.current.add(estado.execucaoId);
     fecharStream.current?.();
     fecharStream.current = null;
+    conectadaId.current = null;
     setEstado(null);
   }, [estado]);
 

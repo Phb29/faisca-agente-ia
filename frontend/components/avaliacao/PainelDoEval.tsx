@@ -1,11 +1,12 @@
 "use client";
 
-import { Inbox } from "lucide-react";
+import { Inbox, RefreshCw } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { lerExecucao, listarExecucoes, type Caso, type Execucao, type NomeDoEval } from "@/lib/api";
+import { lerExecucao, listarExecucoes, mensagemDeErro, type Caso, type Execucao, type NomeDoEval } from "@/lib/api";
 import { TEXTOS } from "@/lib/avaliacao";
 import { terminada, useAmostraAoVivo } from "@/hooks/useAmostraAoVivo";
 import { useRecurso } from "@/hooks/useRecurso";
+import { Aviso } from "@/components/ui/Aviso";
 import { Vazio } from "@/components/ui/Vazio";
 import { AbaAgente } from "./AbaAgente";
 import { AbaBusca } from "./AbaBusca";
@@ -74,7 +75,23 @@ export function PainelDoEval({ nome, token, amostraGlobal, recarregarAmostraGlob
 
   const mostrada = execucao.dados?.id === selecionadaId ? execucao.dados : null;
   let conteudo: ReactNode;
-  if (execucoes.dados === null || (selecionadaId && !mostrada)) {
+  if (execucoes.erro && execucoes.dados === null) {
+    conteudo = (
+      <ErroDeCarga
+        mensagem="Não foi possível carregar as execuções."
+        erro={execucoes.erro}
+        aoRecarregar={execucoes.recarregar}
+      />
+    );
+  } else if (selecionadaId && execucao.erro && !mostrada) {
+    conteudo = (
+      <ErroDeCarga
+        mensagem="Não foi possível carregar esta execução."
+        erro={execucao.erro}
+        aoRecarregar={execucao.recarregar}
+      />
+    );
+  } else if (execucoes.dados === null || (selecionadaId && !mostrada)) {
     conteudo = <Numeros itens={null} />;
   } else if (!mostrada) {
     conteudo = <SemExecucao nome={nome} />;
@@ -107,12 +124,38 @@ export function PainelDoEval({ nome, token, amostraGlobal, recarregarAmostraGlob
   );
 }
 
+function ErroDeCarga({
+  mensagem,
+  erro,
+  aoRecarregar,
+}: {
+  mensagem: string;
+  erro: unknown;
+  aoRecarregar: () => Promise<void>;
+}) {
+  return (
+    <Aviso
+      acao={
+        <button
+          type="button"
+          onClick={() => void aoRecarregar()}
+          className="inline-flex items-center gap-1 font-medium underline-offset-2 hover:underline"
+        >
+          <RefreshCw aria-hidden className="size-3.5" /> Tentar de novo
+        </button>
+      }
+    >
+      {mensagem} {mensagemDeErro(erro)}
+    </Aviso>
+  );
+}
+
 function SemExecucao({ nome }: { nome: NomeDoEval }) {
   return (
     <div className="rounded-2xl bg-surface shadow-suave ring-1 ring-line">
       <Vazio icone={Inbox} titulo="Nenhuma execução completa ainda">
         Rode no terminal, antes da aula:
-        <code className="mt-2 block rounded-lg bg-noite px-3 py-2 font-mono text-[12px] break-all text-noite-texto">
+        <code className="mt-2 block rounded-lg bg-noite px-3 py-2 font-mono text-[12px] break-words text-noite-texto">
           {TEXTOS[nome].comando}
         </code>
       </Vazio>

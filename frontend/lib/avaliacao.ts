@@ -9,6 +9,8 @@ export const TAMANHO_DA_AMOSTRA = 3;
 
 type Textos = {
   rotulo: string;
+  /** O rótulo com o artigo, para frases como "Amostra do Agente rodando". */
+  comArtigo: string;
   sobretitulo: string;
   pergunta: string;
   unidade: string;
@@ -19,6 +21,7 @@ type Textos = {
 export const TEXTOS: Record<NomeDoEval, Textos> = {
   rag: {
     rotulo: "Busca",
+    comArtigo: "da Busca",
     sobretitulo: "Avaliação · RAG",
     pergunta: "A busca encontra o documento certo?",
     unidade: "perguntas",
@@ -27,6 +30,7 @@ export const TEXTOS: Record<NomeDoEval, Textos> = {
   },
   agente: {
     rotulo: "Agente",
+    comArtigo: "do Agente",
     sobretitulo: "Avaliação · Agente",
     pergunta: "O agente toma o caminho certo?",
     unidade: "cenários",
@@ -35,6 +39,7 @@ export const TEXTOS: Record<NomeDoEval, Textos> = {
   },
   juiz: {
     rotulo: "Juiz",
+    comArtigo: "do Juiz",
     sobretitulo: "Avaliação · Calibração do juiz",
     pergunta: "Dá para confiar no juiz?",
     unidade: "respostas",
@@ -131,7 +136,7 @@ export function descreverExecucao(execucao: Execucao): string {
   if (execucao.modo === "completa") {
     // No juiz, o `n` do contexto são as respostas rotuladas (treino + dev + teste); a rodada
     // em si julga só as 36 de dev e teste, as de treino são os exemplos do prompt.
-    const unidade = execucao.eval === "juiz" ? "respostas rotuladas" : "casos";
+    const unidade = execucao.eval === "juiz" ? "rótulos" : "casos";
     partes.push(`completa · ${execucao.contexto.n ?? "?"} ${unidade}`);
   } else {
     partes.push("amostra ao vivo");

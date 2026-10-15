@@ -5,11 +5,12 @@ import type { ReactNode } from "react";
 import type { Caso, CasoAgente, CasoJuiz, CasoRag, NomeDoEval } from "@/lib/api";
 import { rotuloDoGrupo, segundos, temErro } from "@/lib/avaliacao";
 import { cx } from "@/lib/cx";
+import { TextoMarkdown } from "@/components/chat/Mensagens";
 import { iconeDoNo } from "@/components/icones";
 import { Aviso } from "@/components/ui/Aviso";
 import { BotaoDeIcone } from "@/components/ui/Botao";
 import { Gaveta } from "@/components/ui/Gaveta";
-import { Quadrinho, Voz } from "./Quadrinho";
+import { CONFERENCIAS, Quadrinho, Voz } from "./Quadrinho";
 
 type Props = { nome: NomeDoEval; caso: Caso | null; aoFechar: () => void };
 
@@ -73,11 +74,14 @@ function Balao({ children }: { children: ReactNode }) {
   );
 }
 
-const CONFERENCIAS = [
-  ["intencao", "Intenção"],
-  ["acao", "Ação"],
-  ["desfecho", "Desfecho"],
-] as const;
+/** A resposta gerada é markdown de verdade: mesmo renderizador e estilo do chat. */
+function BalaoMarkdown({ texto }: { texto: string }) {
+  return (
+    <div className="rounded-xl bg-canvas px-3.5 py-3">
+      <TextoMarkdown texto={texto} />
+    </div>
+  );
+}
 
 function DoAgente({ caso }: { caso: CasoAgente }) {
   return (
@@ -116,7 +120,7 @@ function DoAgente({ caso }: { caso: CasoAgente }) {
       </Bloco>
       <Bloco titulo="Resposta final">
         {caso.resposta ? (
-          <Balao>{caso.resposta}</Balao>
+          <BalaoMarkdown texto={caso.resposta} />
         ) : (
           <p className="text-[13px] text-muted">Sem resposta final: o turno parou numa Aprovação Pendente.</p>
         )}
@@ -173,7 +177,7 @@ function DaBusca({ caso }: { caso: CasoRag }) {
       </Bloco>
       <Bloco titulo="Resposta gerada">
         {caso.resposta ? (
-          <Balao>{caso.resposta}</Balao>
+          <BalaoMarkdown texto={caso.resposta} />
         ) : (
           <p className="text-[13px] text-muted">A geração não rodou nesta execução.</p>
         )}
