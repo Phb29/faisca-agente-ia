@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { LogOut, MessageSquare } from "lucide-react";
+import { Activity, LogOut, MessageSquare } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { ErroDaApi, listarAprovacoes, listarTickets, mensagemDeErro } from "@/lib/api";
 import { formatarHoje } from "@/lib/formatos";
@@ -86,6 +86,10 @@ export function Central({ token, aoSair }: Props) {
               <Ponto tom={erroDaSondagem ? "perigo" : "volt"} pulsando={!erroDaSondagem} />
               {erroDaSondagem ? "Sem conexão" : "Ao vivo"}
             </span>
+            <Link href="/avaliacao" className={estiloDeBotao("fantasma", "sm")}>
+              <Activity aria-hidden className="size-4" strokeWidth={1.8} />
+              <span className="hidden sm:inline">Avaliação</span>
+            </Link>
             <Link href="/" className={estiloDeBotao("fantasma", "sm")}>
               <MessageSquare aria-hidden className="size-4" strokeWidth={1.8} />
               <span className="hidden sm:inline">Abrir o chat</span>
