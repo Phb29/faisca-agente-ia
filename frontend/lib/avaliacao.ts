@@ -128,9 +128,14 @@ export const rotuloDaFase = (fase: string): string => FASES[fase] ?? fase.replac
 /** Uma linha para o seletor de execução: quando, que tipo e se foi em modo demonstração. */
 export function descreverExecucao(execucao: Execucao): string {
   const partes = [formatarMomento(execucao.criada_em)];
-  partes.push(
-    execucao.modo === "completa" ? `completa · ${execucao.contexto.n ?? "?"} casos` : "amostra ao vivo",
-  );
+  if (execucao.modo === "completa") {
+    // No juiz, o `n` do contexto são as respostas rotuladas (treino + dev + teste); a rodada
+    // em si julga só as 36 de dev e teste, as de treino são os exemplos do prompt.
+    const unidade = execucao.eval === "juiz" ? "respostas rotuladas" : "casos";
+    partes.push(`completa · ${execucao.contexto.n ?? "?"} ${unidade}`);
+  } else {
+    partes.push("amostra ao vivo");
+  }
   if (execucao.contexto.modelos_falsos) partes.push("modo demonstração");
   if (execucao.status === "erro") partes.push("parou com erro");
   return partes.join(" · ");

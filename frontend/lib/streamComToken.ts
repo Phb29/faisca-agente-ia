@@ -4,9 +4,11 @@
 // foto da execução, então nada se perde.
 
 import { ErroDaApi } from "./api";
+import type { Conexao as EstadoDaConexao } from "./sse";
 
 export type EventoBruto = { tipo: string; dados: unknown };
-export type EstadoDaConexao = "conectando" | "aberta" | "reconectando" | "fechada";
+/** Mesmos estados do leitor da Conversa (`Conexao`, em lib/sse.ts): reaproveita o tipo. */
+export type { EstadoDaConexao };
 
 type Opcoes = {
   url: string;
@@ -34,46 +36,67 @@ export function abrirStreamComToken({
   aoFalhar,
 }: Opcoes): () => void {
   let encerrado = false;
+  // Depois que quem abriu chama o fechamento, nenhum retorno deve mais chegar: um "fechada" ou
+  // um evento atrasados não devem pisar no estado de uma conexão mais nova com o mesmo id.
+  let fechadoPeloChamador = false;
   let controle: AbortController | null = null;
+
+  const mudarConexao = (estado: EstadoDaConexao) => {
+    if (!fechadoPeloChamador) aoMudarConexao(estado);
+  };
+  const evento = (ev: EventoBruto) => (fechadoPeloChamador ? true : aoEvento(ev));
+  const falhar = (erro: ErroDaApi) => {
+    if (!fechadoPeloChamador) aoFalhar(erro);
+  };
 
   async function rodar() {
     let espera = 0;
     while (!encerrado) {
       if (espera > 0) {
-        aoMudarConexao("reconectando");
+        mudarConexao("reconectando");
         await esperar(espera);
         if (encerrado) break;
       } else {
-        aoMudarConexao("conectando");
+        mudarConexao("conectando");
       }
       espera = Math.min(Math.max(espera * 2, 1000), ESPERA_MAXIMA_MS);
       controle = new AbortController();
+      // Sem isso, um `fetch` que nunca recebe cabeçalhos ficaria pendurado para sempre: o
+      // relógio de silêncio só começa depois que a resposta chega.
+      const relogioDeConexao = setTimeout(() => controle?.abort(), SILENCIO_MAXIMO_MS);
       try {
         const resposta = await fetch(url, {
           headers: { Accept: "text/event-stream", ...cabecalhos },
           signal: controle.signal,
           cache: "no-store",
         });
+        clearTimeout(relogioDeConexao);
         if (resposta.status === 401 || resposta.status === 404) {
           encerrado = true;
           const mensagem = resposta.status === 401 ? "Token recusado." : "Amostra não encontrada.";
-          aoFalhar(new ErroDaApi(resposta.status, mensagem));
+          falhar(new ErroDaApi(resposta.status, mensagem));
           break;
         }
-        if (!resposta.ok || !resposta.body) continue;
-        aoMudarConexao("aberta");
+        if (!resposta.ok || !resposta.body) {
+          void resposta.body?.cancel();
+          continue;
+        }
+        mudarConexao("aberta");
         espera = 1000;
-        if (await lerEventos(resposta.body, aoEvento)) encerrado = true;
+        if (await lerEventos(resposta.body, evento)) encerrado = true;
       } catch {
-        // a rede caiu ou o stream foi abortado: o laço decide se tenta de novo
+        clearTimeout(relogioDeConexao);
+        // a rede caiu ou o stream foi abortado (pelo fechamento ou pelo relógio de conexão): o
+        // laço decide se tenta de novo
       }
     }
-    aoMudarConexao("fechada");
+    mudarConexao("fechada");
   }
 
   void rodar();
   return () => {
     encerrado = true;
+    fechadoPeloChamador = true;
     controle?.abort();
   };
 }
@@ -105,8 +128,14 @@ async function lerEventos(
         const linha = resto.slice(0, quebra).replace(/\r$/, "");
         resto = resto.slice(quebra + 1);
         if (linha === "") {
-          if (dados.length > 0 && aoEvento({ tipo, dados: JSON.parse(dados.join("\n")) })) {
-            return true;
+          if (dados.length > 0) {
+            let json: unknown;
+            try {
+              json = JSON.parse(dados.join("\n"));
+            } catch {
+              json = undefined; // frame malformado: ignora e segue lendo, não derruba a conexão
+            }
+            if (json !== undefined && aoEvento({ tipo, dados: json })) return true;
           }
           tipo = "message";
           dados = [];

@@ -130,7 +130,16 @@ export function useAmostraAoVivo(token: string, nome: NomeDoEval, opcoes: Opcoes
   useEffect(() => {
     opcoesAtuais.current = opcoes;
   });
-  useEffect(() => () => fecharStream.current?.(), []);
+  // Guarda se o painel ainda está montado: `disparar` pode terminar o POST depois que o
+  // presenter já trocou de aba, e aí `conectar` não deve abrir um stream que ninguém vai fechar.
+  const montado = useRef(false);
+  useEffect(() => {
+    montado.current = true;
+    return () => {
+      montado.current = false;
+      fecharStream.current?.();
+    };
+  }, []);
 
   const daExecucao = useCallback(
     (execucaoId: string, mudar: (atual: AoVivo) => AoVivo) =>
@@ -140,7 +149,7 @@ export function useAmostraAoVivo(token: string, nome: NomeDoEval, opcoes: Opcoes
 
   const conectar = useCallback(
     (execucaoId: string) => {
-      if (dispensadas.current.has(execucaoId)) return;
+      if (!montado.current || dispensadas.current.has(execucaoId)) return;
       fecharStream.current?.();
       setEstado({
         execucaoId,
@@ -182,16 +191,28 @@ export function useAmostraAoVivo(token: string, nome: NomeDoEval, opcoes: Opcoes
   const disparar = useCallback(async () => {
     setDisparando(true);
     try {
-      const { execucao_id } = await rodarAmostra(token, nome);
-      conectar(execucao_id);
-    } catch (erro) {
-      if (erro instanceof ErroDaApi && erro.status === 409) {
-        const ocupada = erro.corpo as AmostraOcupada | null;
-        if (ocupada?.execucao_id && ocupada.eval === nome) conectar(ocupada.execucao_id);
-        else opcoesAtuais.current.aoOcupadaPorOutro();
-        return;
+      // Uma tentativa extra: se o 409 veio sem id, a outra amostra acabou entre a recusa e a
+      // releitura, e repetir o POST já deve passar.
+      for (let tentativa = 0; tentativa < 2; tentativa++) {
+        try {
+          const { execucao_id } = await rodarAmostra(token, nome);
+          conectar(execucao_id);
+          return;
+        } catch (erro) {
+          if (!(erro instanceof ErroDaApi) || erro.status !== 409) {
+            opcoesAtuais.current.aoFalhar(erro);
+            return;
+          }
+          const ocupada = erro.corpo as AmostraOcupada | null;
+          if (ocupada?.execucao_id && ocupada.eval === nome) {
+            conectar(ocupada.execucao_id);
+            return;
+          }
+          if (!ocupada?.execucao_id && tentativa === 0) continue;
+          opcoesAtuais.current.aoOcupadaPorOutro();
+          return;
+        }
       }
-      opcoesAtuais.current.aoFalhar(erro);
     } finally {
       setDisparando(false);
     }
