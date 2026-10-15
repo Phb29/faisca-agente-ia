@@ -6,6 +6,7 @@ import threading
 
 import psycopg
 import pytest
+from psycopg import sql
 
 from ampere.acoes.aprovacoes import listar_pendentes
 from ampere.conversas.conversas import criar_conversa, listar_mensagens, obter_conversa
@@ -15,6 +16,7 @@ from ampere.fila.fila import (
     CANAL_DA_FILA,
     concluir_job,
     enfileirar_mensagem,
+    enfileirar_retomada,
     enfileirar_sem_conversa,
     pegar_proximo_job,
 )
@@ -84,9 +86,23 @@ def test_dois_workers_concorrentes_processam_cada_job_exatamente_uma_vez(banco):
 
         assert sorted(vistos) == sorted(set(vistos))
         assert len(vistos) == 10
+        assert vistos == sorted(vistos), "jobs da mesma Conversa têm que rodar em ordem"
         assert _contar(conn, "fila_de_jobs", status="concluido") == 10
         assert _contar(conn, "fila_de_jobs", status="erro") == 0
         assert _contar(conn, "mensagens", papel="assistente") == 10
+
+
+def test_dois_jobs_eval_sem_conversa_podem_ser_reservados_ao_mesmo_tempo(banco):
+    with conectar(banco, autocommit=True) as conn:
+        enfileirar_sem_conversa(conn, tipo="eval", canal="avaliacao_a", payload={})
+        enfileirar_sem_conversa(conn, tipo="eval", canal="avaliacao_b", payload={})
+
+        primeiro = pegar_proximo_job(conn)
+        segundo = pegar_proximo_job(conn)
+
+    assert primeiro is not None
+    assert segundo is not None
+    assert {primeiro.canal, segundo.canal} == {"avaliacao_a", "avaliacao_b"}
 
 
 def test_message_done_grava_mensagem_do_assistente_antes_de_publicar(banco):
@@ -305,6 +321,35 @@ def test_conversas_diferentes_sao_reservadas_ao_mesmo_tempo(banco):
     assert {primeiro.conversa_id, segundo.conversa_id} == {uma, outra}
 
 
+def test_enfileirar_trava_a_conversa_e_serializa_a_fila(banco):
+    """Sem travar a Conversa, o id reservado por B podia confirmar antes do de A, e a
+    reserva por `anterior.id < f.id` deixaria passar dois jobs da mesma Conversa juntos."""
+    with conectar(banco) as conn:
+        conversa_id = criar_conversa(conn, "c1")
+        conn.commit()
+
+    conn_a = conectar(banco)
+    resultado: dict = {}
+
+    def enfileirar_b():
+        with conectar(banco) as conn_b:
+            resultado["id_b"] = enfileirar_retomada(conn_b, conversa_id, "ap-b", True, None, "c1")
+            conn_b.commit()
+
+    with conn_a.transaction():
+        id_a = enfileirar_retomada(conn_a, conversa_id, "ap-a", True, None, "c1")
+
+        tarefa = threading.Thread(target=enfileirar_b)
+        tarefa.start()
+        threading.Event().wait(0.3)
+        assert "id_b" not in resultado, "B tem que esperar A liberar a Conversa"
+
+    tarefa.join(timeout=5)
+    conn_a.close()
+
+    assert resultado["id_b"] > id_a
+
+
 def test_job_sem_conversa_tem_canal_proprio(banco):
     with conectar(banco, autocommit=True) as conn:
         job_id = enfileirar_sem_conversa(
@@ -322,7 +367,15 @@ def test_job_sem_conversa_tem_canal_proprio(banco):
 def test_banco_recusa_job_do_chat_sem_conversa(banco):
     with conectar(banco, autocommit=True) as conn:
         with pytest.raises(psycopg.errors.CheckViolation):
-            conn.execute("INSERT INTO fila_de_jobs (tipo, payload) VALUES ('mensagem', '{}')")
+            conn.execute(
+                "INSERT INTO fila_de_jobs (tipo, canal, payload) VALUES ('mensagem', 'x', '{}')"
+            )
+
+
+def test_banco_recusa_job_sem_conversa_e_sem_canal(banco):
+    with conectar(banco, autocommit=True) as conn:
+        with pytest.raises(psycopg.errors.CheckViolation):
+            conn.execute("INSERT INTO fila_de_jobs (tipo, payload) VALUES ('eval', '{}')")
 
 
 def test_worker_publica_os_eventos_no_canal_do_job(banco):
@@ -347,7 +400,7 @@ def _capturar_eventos(conn_string: str, nome_do_canal: str):
     """Abre uma conexão síncrona com LISTEN antes do worker rodar e devolve uma função
     que drena as notificações recebidas até então."""
     conn = conectar(conn_string, autocommit=True)
-    conn.execute(f"LISTEN {nome_do_canal}")
+    conn.execute(sql.SQL("LISTEN {}").format(sql.Identifier(nome_do_canal)))
 
     def drenar() -> list[Evento]:
         eventos = [Evento.model_validate_json(n.payload) for n in conn.notifies(timeout=1.0)]

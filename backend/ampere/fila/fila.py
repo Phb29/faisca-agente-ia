@@ -36,12 +36,22 @@ class Job:
     canal: str = ""
 
 
+def _travar_conversa(conn: psycopg.Connection, conversa_id: str) -> None:
+    """Trava a linha da Conversa até o fim da transação. Sem isso, dois enfileiramentos da
+    mesma Conversa em conexões concorrentes podem confirmar fora da ordem em que pediram o
+    id (ex.: o id 7 commita antes do 6), e a reserva por `anterior.id < f.id` deixa passar
+    dois jobs da mesma Conversa juntos. Travando a Conversa primeiro, quem pede o id depois
+    também commita depois."""
+    conn.execute("SELECT 1 FROM conversas WHERE id = %s FOR UPDATE", (conversa_id,))
+
+
 def enfileirar_mensagem(
     conn: psycopg.Connection, conversa_id: str, message_id: str, conteudo: str, cliente_id: str
 ) -> bool:
     """Grava a mensagem do Cliente e o job numa transação só. Devolve False quando o
     `message_id` já existia: o reenvio é ignorado sem erro (idempotência)."""
     with conn.transaction():
+        _travar_conversa(conn, conversa_id)
         if gravar_mensagem(conn, conversa_id, "cliente", conteudo, message_id) is None:
             return False
         conn.execute(
@@ -70,6 +80,7 @@ def enfileirar_retomada(
         "cliente_id": cliente_id,
     }
     with conn.transaction():
+        _travar_conversa(conn, conversa_id)
         linha = conn.execute(
             "INSERT INTO fila_de_jobs (tipo, conversa_id, payload) "
             "VALUES ('retomada', %s, %s) RETURNING id",
@@ -117,7 +128,9 @@ def pegar_proximo_job(conn: psycopg.Connection) -> Job | None:
     antigo da mesma Conversa está pendente ou em processamento, para duas mensagens da mesma
     Conversa nunca rodarem juntas sobre o mesmo thread do LangGraph. Isso também fecha a
     corrida entre dois workers: enquanto o primeiro não confirma a reserva do job mais
-    antigo, o segundo ainda o vê como pendente e pula o seguinte."""
+    antigo, o segundo ainda o vê como pendente e pula o seguinte. `anterior.id < f.id`
+    só vale como ordem porque `_travar_conversa` garante que os ids de uma Conversa são
+    confirmados na mesma ordem em que foram pedidos."""
     with conn.transaction():
         linha = conn.execute(_RESERVAR, (MINUTOS_ATE_LIBERAR_A_CONVERSA,)).fetchone()
     if linha is None:

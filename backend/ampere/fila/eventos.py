@@ -23,6 +23,7 @@ from collections.abc import AsyncIterator
 from typing import Literal
 
 import psycopg
+from psycopg import sql
 from pydantic import BaseModel, Field
 
 from ampere.nucleo.banco import conectar_async
@@ -69,7 +70,7 @@ class Escuta:
 
     async def abrir(self) -> "Escuta":
         self._conn = await conectar_async(self._conn_string, autocommit=True)
-        await self._conn.execute(f"LISTEN {self._canal}")
+        await self._conn.execute(sql.SQL("LISTEN {}").format(sql.Identifier(self._canal)))
         return self
 
     async def __aiter__(self) -> AsyncIterator[Evento]:

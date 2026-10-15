@@ -31,7 +31,8 @@ def processar_um_job(conn: psycopg.Connection, executor: Executor) -> bool:
     job = pegar_proximo_job(conn)
     if job is None:
         return False
-    log.info("job %s (%s) no canal %s", job.id, job.tipo, job.canal)
+    onde = f"da Conversa {job.conversa_id}" if job.conversa_id else f"no canal {job.canal}"
+    log.info("job %s (%s) %s", job.id, job.tipo, onde)
     try:
         for evento in executor.executar(job):
             publicar(conn, job.canal, _persistir(conn, job, evento))
