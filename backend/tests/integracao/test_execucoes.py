@@ -6,6 +6,7 @@ import pytest
 
 from ampere.evals.execucoes import (
     TEMPO_ESGOTADO,
+    RegistroPostgres,
     amostra_em_andamento,
     anexar_caso,
     canal_da_execucao,
@@ -134,3 +135,19 @@ def test_completa_nunca_e_liberada(banco):
         salvar_completa(conn, "rag", contexto={}, resumo={}, casos=[])
         conn.execute("UPDATE execucoes_de_eval SET criada_em = now() - interval '1 day'")
         assert liberar_abandonadas(conn) == []
+
+
+def test_registro_postgres_grava_pelo_pool(banco, pool):
+    with conectar(banco, autocommit=True) as conn:
+        execucao_id = criar_amostra(conn, "agente")
+    registro = RegistroPostgres(pool)
+
+    assert registro.marcar_rodando(execucao_id, {"sorteados": []}) is True
+    assert registro.anexar_caso(execucao_id, {"id": "ag06"}) is True
+    assert registro.concluir(execucao_id, {"n": 1}) is True
+    assert registro.falhar(execucao_id, "tarde demais") is False
+
+    with conectar(banco, autocommit=True) as conn:
+        lida = obter(conn, execucao_id)
+    assert lida["status"] == "concluida"
+    assert lida["casos"] == [{"id": "ag06"}]

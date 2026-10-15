@@ -7,10 +7,11 @@ As escritas da amostra são guardadas pelo status: `marcar_rodando` só sai de `
 executor descobre pela própria escrita, que devolve False, que deve parar.
 """
 
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 import psycopg
 from psycopg.types.json import Jsonb
+from psycopg_pool import ConnectionPool
 
 from ampere.fila.eventos import Evento, publicar
 
@@ -137,3 +138,80 @@ def obter(conn: psycopg.Connection, execucao_id: str) -> Execucao | None:
     return conn.execute(
         f"SELECT {_COM_CASOS} FROM execucoes_de_eval WHERE id = %s", (execucao_id,)
     ).fetchone()
+
+
+class RegistroDeExecucoes(Protocol):
+    """O que o executor da amostra grava. Cada escrita devolve se valeu; False quer dizer
+    que a execução saiu do status esperado (foi liberada, por exemplo) e é hora de parar."""
+
+    def marcar_rodando(self, execucao_id: str, contexto: dict) -> bool: ...
+    def anexar_caso(self, execucao_id: str, caso: dict) -> bool: ...
+    def concluir(self, execucao_id: str, resumo: dict) -> bool: ...
+    def falhar(self, execucao_id: str, erro: str) -> bool: ...
+
+
+class RegistroPostgres:
+    """As escritas acima, cada uma numa conexão do pool (em autocommit)."""
+
+    def __init__(self, pool: ConnectionPool) -> None:
+        self._pool = pool
+
+    def marcar_rodando(self, execucao_id: str, contexto: dict) -> bool:
+        with self._pool.connection() as conn:
+            return marcar_rodando(conn, execucao_id, contexto)
+
+    def anexar_caso(self, execucao_id: str, caso: dict) -> bool:
+        with self._pool.connection() as conn:
+            return anexar_caso(conn, execucao_id, caso)
+
+    def concluir(self, execucao_id: str, resumo: dict) -> bool:
+        with self._pool.connection() as conn:
+            return concluir(conn, execucao_id, resumo)
+
+    def falhar(self, execucao_id: str, erro: str) -> bool:
+        with self._pool.connection() as conn:
+            return falhar(conn, execucao_id, erro)
+
+
+class RegistroEmMemoria:
+    """Para os testes: as mesmas regras de status, num dicionário."""
+
+    def __init__(self) -> None:
+        self.execucoes: dict[str, dict[str, Any]] = {}
+
+    def criar(self, execucao_id: str = "e1") -> str:
+        self.execucoes[execucao_id] = {
+            "status": "pendente",
+            "contexto": {},
+            "casos": [],
+            "resumo": None,
+            "erro": None,
+        }
+        return execucao_id
+
+    def liberar(self, execucao_id: str) -> None:
+        """O que `liberar_abandonadas` faz com uma amostra parada."""
+        self.execucoes[execucao_id].update(status="erro", erro=TEMPO_ESGOTADO)
+
+    def marcar_rodando(self, execucao_id: str, contexto: dict) -> bool:
+        return self._mudar(execucao_id, ("pendente",), status="rodando", contexto=contexto)
+
+    def anexar_caso(self, execucao_id: str, caso: dict) -> bool:
+        execucao = self.execucoes.get(execucao_id)
+        if execucao is None or execucao["status"] != "rodando":
+            return False
+        execucao["casos"].append(caso)
+        return True
+
+    def concluir(self, execucao_id: str, resumo: dict) -> bool:
+        return self._mudar(execucao_id, ("rodando",), status="concluida", resumo=resumo)
+
+    def falhar(self, execucao_id: str, erro: str) -> bool:
+        return self._mudar(execucao_id, ("pendente", "rodando"), status="erro", erro=erro)
+
+    def _mudar(self, execucao_id: str, de: tuple[str, ...], **campos: Any) -> bool:
+        execucao = self.execucoes.get(execucao_id)
+        if execucao is None or execucao["status"] not in de:
+            return False
+        execucao.update(campos)
+        return True
