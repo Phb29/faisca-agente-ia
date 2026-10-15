@@ -11,6 +11,7 @@ from ampere.nucleo.banco import conectar
 PASTA_MIGRACOES = Path(__file__).parent / "migracoes"
 
 TABELAS_NOSSAS = (
+    "execucoes_de_eval",
     "tickets",
     "aprovacoes_pendentes",
     "fila_de_jobs",
