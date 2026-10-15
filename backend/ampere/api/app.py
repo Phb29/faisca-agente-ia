@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from psycopg_pool import ConnectionPool
 from qdrant_client import QdrantClient
 
-from ampere.api import atendente, cliente, sse
+from ampere.api import atendente, avaliacao, cliente, sse
 from ampere.api.atendente import MemoriaProcedural
 from ampere.nucleo.config import Config
 
@@ -49,6 +49,7 @@ def criar_app(
     app.include_router(cliente.router)
     app.include_router(sse.router)
     app.include_router(atendente.router)
+    app.include_router(avaliacao.router)
     return app
 
 
