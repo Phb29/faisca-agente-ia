@@ -13,7 +13,7 @@ import random
 import time
 import traceback
 from collections.abc import Callable, Generator, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from langchain_core.language_models import BaseChatModel
@@ -47,8 +47,10 @@ class RoteiroDoEval:
 
     sortear: Callable[[random.Random], list[Sorteado]]
     passos: Callable[[Sorteado], PassosDoCaso]
-    contexto: dict
+    prompts: tuple[str, ...]
     resumo: Callable[[list[dict]], dict]
+    # O que só este eval registra no contexto (a variante da Busca, a seed do Juiz).
+    contexto: dict = field(default_factory=dict)
 
 
 class ExecutorDeAvaliacao:
@@ -81,7 +83,11 @@ class ExecutorDeAvaliacao:
         roteiro = self._roteiro(eval)
         sorteados = roteiro.sortear(self._sorteio())
         cartoes = [s.cartao() for s in sorteados]
-        contexto = {**roteiro.contexto, "n": len(sorteados), "sorteados": cartoes}
+        contexto = {
+            **contexto_base(self.config, prompts=roteiro.prompts, n=len(sorteados)),
+            **roteiro.contexto,
+            "sorteados": cartoes,
+        }
         if not self.registro.marcar_rodando(execucao_id, contexto):
             yield Evento(tipo="error", dados={"mensagem": "amostra liberada antes de começar"})
             return
@@ -115,15 +121,16 @@ class ExecutorDeAvaliacao:
                     gerador=self.composicao.gerador(),
                     juiz=self.composicao.juiz(),
                 ),
-                contexto={**self._contexto(rag.PROMPTS_DO_RAG), "variante": variante},
+                prompts=rag.PROMPTS_DO_RAG,
                 resumo=lambda casos: rag.resumo_rag(variante, casos, []),
+                contexto={"variante": variante},
             )
         if eval == "agente":
             cenarios = self._executor_de_cenarios()
             return RoteiroDoEval(
                 sortear=agente.sortear_amostra,
                 passos=lambda s: agente.caso_ao_vivo(s, cenarios),
-                contexto=self._contexto(agente.PROMPTS_DO_AGENTE),
+                prompts=agente.PROMPTS_DO_AGENTE,
                 resumo=agente.resumo_agente,
             )
         if eval == "juiz":
@@ -133,17 +140,11 @@ class ExecutorDeAvaliacao:
                 passos=lambda s: calibracao.caso_ao_vivo(
                     s, juiz=self.composicao.juiz(), few_shot=exemplos
                 ),
-                contexto={
-                    **self._contexto(calibracao.PROMPTS_DO_JUIZ),
-                    "seed": calibracao.SEED_DA_AMOSTRA,
-                },
+                prompts=calibracao.PROMPTS_DO_JUIZ,
                 resumo=calibracao.resumo_amostra_juiz,
+                contexto={"seed": calibracao.SEED_DA_AMOSTRA},
             )
         raise ValueError(f"eval desconhecido: {eval!r}")
-
-    def _contexto(self, prompts: tuple[str, ...]) -> dict:
-        """O `n` é um placeholder: `_executar` o troca pelo tamanho real do sorteio."""
-        return contexto_base(self.config, prompts=prompts, n=0)
 
     def _executor_de_cenarios(self) -> ExecutorDeCenarios:
         """Um só por processo: reaproveita a composição do grafo entre as amostras. O
