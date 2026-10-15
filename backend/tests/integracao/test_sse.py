@@ -6,14 +6,10 @@ num stream aberto; por isso o teste sobe um uvicorn de verdade numa thread.
 """
 
 import asyncio
-import json
-import socket
 import threading
-from collections.abc import AsyncIterator
 
 import httpx
 import pytest
-import uvicorn
 
 from ampere.api.app import criar_app
 from ampere.fila.eventos import Evento
@@ -21,57 +17,19 @@ from ampere.fila.executor import ExecutorFalso
 from ampere.fila.worker import processar_um_job
 from ampere.nucleo.banco import conectar
 from ampere.nucleo.config import Config
+from tests.integracao.apoio_sse import coletar, servidor_no_ar
 
 pytestmark = pytest.mark.integracao
 
 CLIENTE = {"X-Cliente-Id": "c1"}
 
 
-def _porta_livre() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 @pytest.fixture
 def servidor(banco, pool):
     config = Config(database_url=banco, modelos_falsos=True)
     app = criar_app(config, pool=pool, verificar_qdrant=lambda: True)
-    porta = _porta_livre()
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=porta, log_level="warning"))
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    for _ in range(100):
-        if server.started:
-            break
-        threading.Event().wait(0.05)
-    assert server.started, "uvicorn não subiu"
-    yield f"http://127.0.0.1:{porta}"
-    server.should_exit = True
-    thread.join(timeout=5)
-
-
-async def _eventos_sse(resposta: httpx.Response) -> AsyncIterator[tuple[str, dict]]:
-    tipo, dados = None, []
-    async for linha in resposta.aiter_lines():
-        if linha.startswith(":"):
-            continue
-        if linha.startswith("event:"):
-            tipo = linha[6:].strip()
-        elif linha.startswith("data:"):
-            dados.append(linha[5:].strip())
-        elif linha == "" and tipo:
-            yield tipo, json.loads("\n".join(dados))
-            tipo, dados = None, []
-
-
-async def _coletar(resposta: httpx.Response, quantos: int) -> list[tuple[str, dict]]:
-    recebidos = []
-    async for tipo, dados in _eventos_sse(resposta):
-        recebidos.append((tipo, dados))
-        if len(recebidos) == quantos:
-            break
-    return recebidos
+    with servidor_no_ar(app) as url:
+        yield url
 
 
 def _processar_um(banco: str, executor: ExecutorFalso) -> None:
@@ -129,7 +87,7 @@ async def test_sse_recebe_os_cinco_eventos_na_ordem_e_reenvia_ao_reconectar(serv
 
             thread = threading.Thread(target=worker)
             thread.start()
-            recebidos = await asyncio.wait_for(_coletar(r, 5), timeout=10)
+            recebidos = await asyncio.wait_for(coletar(r, 5), timeout=10)
             thread.join(timeout=5)
 
         tipos = [t for t, _ in recebidos]
@@ -144,7 +102,7 @@ async def test_sse_recebe_os_cinco_eventos_na_ordem_e_reenvia_ao_reconectar(serv
 
         # Reconexão: a última mensagem gravada do assistente volta como message_done.
         async with client.stream("GET", f"/conversas/{conversa_id}/stream", headers=CLIENTE) as r:
-            reenviados = await asyncio.wait_for(_coletar(r, 1), timeout=10)
+            reenviados = await asyncio.wait_for(coletar(r, 1), timeout=10)
         assert reenviados[0][0] == "message_done"
         assert reenviados[0][1]["reenvio"] is True
         assert reenviados[0][1]["mensagem_id"] == recebidos[3][1]["mensagem_id"]
@@ -173,7 +131,7 @@ async def test_sse_aceita_cliente_id_por_query_string(servidor, banco):
             executor = ExecutorFalso([Evento(tipo="message_done", dados={"conteudo": "olá"})])
             thread = threading.Thread(target=_processar_um, args=(banco, executor))
             thread.start()
-            recebidos = await asyncio.wait_for(_coletar(r, 1), timeout=10)
+            recebidos = await asyncio.wait_for(coletar(r, 1), timeout=10)
             thread.join(timeout=5)
         assert recebidos[0][0] == "message_done"
         assert recebidos[0][1]["conteudo"] == "olá"
