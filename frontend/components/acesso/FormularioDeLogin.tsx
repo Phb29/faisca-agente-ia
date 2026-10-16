@@ -73,6 +73,10 @@ export function FormularioDeLogin() {
       }
       if (resposta.status === 429) {
         setErro((await detalheDe(resposta)) ?? "Muitas tentativas. Tente de novo em alguns minutos.");
+      } else if (resposta.status === 503) {
+        // A api segura rajadas de login no servidor inteiro, e a mensagem dela diz o que fazer.
+        // Sem mensagem, é um 503 de outro lugar (o frontend subindo, por exemplo).
+        setErro((await detalheDe(resposta)) ?? "Não foi possível entrar agora. Tente de novo em instantes.");
       } else if (resposta.status === 401 || resposta.status === 422) {
         // A mesma mensagem para e-mail e senha errados: não revela qual dos dois falhou.
         setErro("E-mail ou senha incorretos.");
