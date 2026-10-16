@@ -1,4 +1,4 @@
-"""Rotas do Atendente, protegidas por `X-Atendente-Token`: Aprovações Pendentes (aprovar e
+"""Rotas do Atendente, protegidas pela sessão de login: Aprovações Pendentes (aprovar e
 rejeitar viram jobs de retomada na fila), Tickets e Memória Procedural de cada Cliente."""
 
 from typing import Protocol
@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from ampere.acoes.aprovacoes import Aprovacao, decidir_aprovacao, listar_pendentes, obter_aprovacao
 from ampere.acoes.ticket import StoreDeTicketsPostgres, Ticket
-from ampere.api.dependencias import Conexao, Pool, exigir_atendente, uuid_ou_404
+from ampere.api.dependencias import Conexao, Pool, exigir_sessao, uuid_ou_404
 from ampere.conversas.conversas import Mensagem, listar_mensagens
 from ampere.fila.fila import enfileirar_retomada
 
@@ -35,7 +35,7 @@ class ConversaDoTicket(BaseModel):
     mensagens: list[Mensagem]
 
 
-router = APIRouter(prefix="/atendente", dependencies=[Depends(exigir_atendente)])
+router = APIRouter(prefix="/atendente", dependencies=[Depends(exigir_sessao)])
 
 
 def _memoria(request: Request) -> MemoriaProcedural:

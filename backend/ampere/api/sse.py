@@ -1,5 +1,5 @@
-"""Stream SSE de uma Conversa: LISTEN no canal da Conversa e repasse de cada Evento como
-`event: <tipo>` / `data: <json dos dados>`.
+"""Stream SSE de uma Conversa, protegido pela sessão de login: LISTEN no canal da Conversa e
+repasse de cada Evento como `event: <tipo>` / `data: <json dos dados>`.
 
 Ao conectar, reenvia a última resposta gravada como `message_done` com `reenvio: true`: é
 assim que o front se recupera de uma queda sem perder a resposta. A conexão do pool é usada
@@ -9,17 +9,17 @@ enquanto o navegador estiver ouvindo.
 
 import json
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from psycopg_pool import ConnectionPool
 from sse_starlette import EventSourceResponse, ServerSentEvent
 from starlette.concurrency import run_in_threadpool
 
 from ampere.api.cliente import conversa_do_cliente
-from ampere.api.dependencias import ClienteId, Configuracao, Pool
+from ampere.api.dependencias import ClienteId, Configuracao, Pool, exigir_sessao
 from ampere.conversas.conversas import Mensagem, ultima_mensagem_do_assistente
 from ampere.fila.eventos import Escuta, canal
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(exigir_sessao)])
 
 
 def _estado_inicial(

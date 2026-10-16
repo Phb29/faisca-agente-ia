@@ -1,10 +1,9 @@
-"""Rotas da Tela de Avaliação, protegidas pelo mesmo `X-Atendente-Token` da Central: as
-execuções de cada eval, a amostra em andamento, o disparo de uma amostra ao vivo (um job
-`eval` na mesma fila do chat) e o stream dela (ver docs/adr/0009).
+"""Rotas da Tela de Avaliação, protegidas pela sessão de login, como a Central: as execuções
+de cada eval, a amostra em andamento, o disparo de uma amostra ao vivo (um job `eval` na
+mesma fila do chat) e o stream dela (ver docs/adr/0009).
 
-O stream é lido pelo front com `fetch`, e não com `EventSource`, porque precisa mandar o
-token no cabeçalho; token na URL acabaria nos logs. As rotas de leitura liberam antes as
-amostras abandonadas, para a tela nunca mostrar uma rodada morta como em andamento.
+As rotas de leitura liberam antes as amostras abandonadas, para a tela nunca mostrar uma
+rodada morta como em andamento.
 """
 
 import json
@@ -17,7 +16,7 @@ from psycopg_pool import ConnectionPool
 from sse_starlette import EventSourceResponse, ServerSentEvent
 from starlette.concurrency import run_in_threadpool
 
-from ampere.api.dependencias import Conexao, Configuracao, Pool, exigir_atendente, uuid_ou_404
+from ampere.api.dependencias import Conexao, Configuracao, Pool, exigir_sessao, uuid_ou_404
 from ampere.evals.execucoes import (
     EVALS,
     amostra_em_andamento,
@@ -30,7 +29,7 @@ from ampere.evals.execucoes import (
 from ampere.fila.eventos import Escuta
 from ampere.fila.fila import enfileirar_sem_conversa
 
-router = APIRouter(prefix="/avaliacao", dependencies=[Depends(exigir_atendente)])
+router = APIRouter(prefix="/avaliacao", dependencies=[Depends(exigir_sessao)])
 
 FIM_DO_STREAM = {"eval_fim", "error"}
 TERMINADAS = {"concluida", "erro"}

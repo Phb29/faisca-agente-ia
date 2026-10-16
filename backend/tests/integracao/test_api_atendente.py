@@ -1,5 +1,6 @@
-"""API HTTP: rotas de Cliente, rotas de Atendente protegidas por token, aprovação e
-rejeição virando jobs de retomada, mascaramento na borda, Memória Procedural e health check."""
+"""API HTTP com uma sessão aberta: rotas de Cliente, rotas de Atendente, aprovação e rejeição
+virando jobs de retomada, mascaramento na borda, Memória Procedural e health check sem sessão.
+A exigência da sessão em cada rota é testada em `test_acesso.py`."""
 
 import httpx
 import pytest
@@ -13,8 +14,6 @@ from ampere.nucleo.config import Config
 
 pytestmark = pytest.mark.integracao
 
-TOKEN = "token-de-teste"
-ATENDENTE = {"X-Atendente-Token": TOKEN}
 CLIENTE = {"X-Cliente-Id": "c1"}
 
 
@@ -35,16 +34,17 @@ def memoria():
 
 
 def _app(banco, pool, **kwargs):
-    config = Config(database_url=banco, atendente_token=TOKEN, modelos_falsos=True)
+    config = Config(database_url=banco, modelos_falsos=True)
     return criar_app(
         config, pool=pool, verificar_qdrant=kwargs.pop("qdrant", lambda: True), **kwargs
     )
 
 
 @pytest.fixture
-async def client(banco, pool, memoria):
+async def client(banco, pool, memoria, sessao):
     app = _app(banco, pool, memoria_procedural=memoria)
-    async with httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+    transporte = ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transporte, base_url="http://test", headers=sessao) as c:
         yield c
 
 
@@ -67,19 +67,10 @@ def _aprovacao_pendente(pool) -> tuple[str, str]:
 # --- Atendente ---------------------------------------------------------------------------
 
 
-async def test_rotas_de_atendente_exigem_token(client):
-    assert (await client.get("/atendente/aprovacoes")).status_code == 401
-    errado = await client.get("/atendente/aprovacoes", headers={"X-Atendente-Token": "x"})
-    assert errado.status_code == 401
-    certo = await client.get("/atendente/aprovacoes", headers=ATENDENTE)
-    assert certo.status_code == 200
-    assert certo.json() == []
-
-
 async def test_lista_de_aprovacoes_traz_valor_numerico_e_motivo_do_gate(client, pool):
     _aprovacao_pendente(pool)
 
-    [aprovacao] = (await client.get("/atendente/aprovacoes", headers=ATENDENTE)).json()
+    [aprovacao] = (await client.get("/atendente/aprovacoes")).json()
 
     assert aprovacao["valor"] == 450.0
     assert aprovacao["motivo_do_gate"] == "valor_acima_do_limite"
@@ -89,7 +80,7 @@ async def test_lista_de_aprovacoes_traz_valor_numerico_e_motivo_do_gate(client, 
 async def test_aprovar_cria_job_de_retomada_com_payload_correto(client, pool):
     conversa_id, aprovacao_id = _aprovacao_pendente(pool)
 
-    resp = await client.post(f"/atendente/aprovacoes/{aprovacao_id}/aprovar", headers=ATENDENTE)
+    resp = await client.post(f"/atendente/aprovacoes/{aprovacao_id}/aprovar")
 
     assert resp.status_code == 200
     job_id = resp.json()["job_id"]
@@ -109,7 +100,7 @@ async def test_aprovar_cria_job_de_retomada_com_payload_correto(client, pool):
         ).fetchone()
         assert aprovacao["status"] == "aprovada"
         assert aprovacao["decidida_em"] is not None
-    pendentes = await client.get("/atendente/aprovacoes", headers=ATENDENTE)
+    pendentes = await client.get("/atendente/aprovacoes")
     assert pendentes.json() == []
 
 
@@ -118,7 +109,6 @@ async def test_rejeitar_com_motivo_grava_o_motivo(client, pool):
 
     resp = await client.post(
         f"/atendente/aprovacoes/{aprovacao_id}/rejeitar",
-        headers=ATENDENTE,
         json={"motivo": "  Pedido fora do prazo  "},
     )
 
@@ -139,10 +129,10 @@ async def test_aprovar_duas_vezes_devolve_409_e_inexistente_404(client, pool):
     _, aprovacao_id = _aprovacao_pendente(pool)
     rota = f"/atendente/aprovacoes/{aprovacao_id}/aprovar"
 
-    assert (await client.post(rota, headers=ATENDENTE)).status_code == 200
-    assert (await client.post(rota, headers=ATENDENTE)).status_code == 409
+    assert (await client.post(rota)).status_code == 200
+    assert (await client.post(rota)).status_code == 409
     inexistente = "00000000-0000-0000-0000-000000000000"
-    resp = await client.post(f"/atendente/aprovacoes/{inexistente}/aprovar", headers=ATENDENTE)
+    resp = await client.post(f"/atendente/aprovacoes/{inexistente}/aprovar")
     assert resp.status_code == 404
     with pool.connection() as conn:
         assert conn.execute("SELECT count(*) AS n FROM fila_de_jobs").fetchone()["n"] == 1
@@ -159,11 +149,11 @@ async def test_tickets_e_conversa_do_ticket(client, pool):
         ResumoDoTicket(resumo="Quer humano", categoria="outro", prioridade="alta"),
     )
 
-    lista = await client.get("/atendente/tickets", headers=ATENDENTE)
+    lista = await client.get("/atendente/tickets")
     assert lista.status_code == 200
     assert [t["id"] for t in lista.json()] == [ticket.id]
 
-    detalhe = await client.get(f"/atendente/tickets/{ticket.id}/conversa", headers=ATENDENTE)
+    detalhe = await client.get(f"/atendente/tickets/{ticket.id}/conversa")
     assert detalhe.status_code == 200
     assert detalhe.json()["ticket"]["resumo"] == "Quer humano"
     assert [m["conteudo"] for m in detalhe.json()["mensagens"]] == [
@@ -171,32 +161,31 @@ async def test_tickets_e_conversa_do_ticket(client, pool):
         "encaminhando",
     ]
     inexistente = "00000000-0000-0000-0000-000000000000"
-    resp = await client.get(f"/atendente/tickets/{inexistente}/conversa", headers=ATENDENTE)
+    resp = await client.get(f"/atendente/tickets/{inexistente}/conversa")
     assert resp.status_code == 404
 
 
 async def test_memoria_procedural_roundtrip(client, memoria):
-    vazio = await client.get("/atendente/clientes/c1/memoria-procedural", headers=ATENDENTE)
+    vazio = await client.get("/atendente/clientes/c1/memoria-procedural")
     assert vazio.status_code == 200
     assert vazio.json() == {"texto": ""}
 
     escrito = await client.put(
         "/atendente/clientes/c1/memoria-procedural",
-        headers=ATENDENTE,
         json={"texto": "Sempre tratar por 'senhor'."},
     )
     assert escrito.status_code == 200
     assert escrito.json() == {"texto": "Sempre tratar por 'senhor'."}
     assert memoria.textos["c1"] == "Sempre tratar por 'senhor'."
 
-    lido = await client.get("/atendente/clientes/c1/memoria-procedural", headers=ATENDENTE)
+    lido = await client.get("/atendente/clientes/c1/memoria-procedural")
     assert lido.json() == {"texto": "Sempre tratar por 'senhor'."}
 
 
-async def test_memoria_procedural_sem_implementacao_devolve_503(banco, pool):
+async def test_memoria_procedural_sem_implementacao_devolve_503(banco, pool, sessao):
     app = _app(banco, pool)
     async with httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp = await c.get("/atendente/clientes/c1/memoria-procedural", headers=ATENDENTE)
+        resp = await c.get("/atendente/clientes/c1/memoria-procedural", headers=sessao)
     assert resp.status_code == 503
 
 

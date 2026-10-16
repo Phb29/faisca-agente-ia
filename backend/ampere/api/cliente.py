@@ -1,4 +1,5 @@
-"""Rotas do Cliente: Clientes e Pedidos para o chat, Conversas e mensagens (202 idempotente).
+"""Rotas do Cliente, protegidas pela sessão de login: Clientes e Pedidos para o chat,
+Conversas e mensagens (202 idempotente).
 
 Toda mensagem é mascarada aqui, na borda, antes de qualquer gravação: cartão, CPF, CVV e
 senha nunca chegam ao transcript, à fila, ao checkpoint nem ao trace.
@@ -7,10 +8,10 @@ senha nunca chegam ao transcript, à fila, ao checkpoint nem ao trace.
 from datetime import date
 
 import psycopg
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from ampere.api.dependencias import ClienteId, Conexao, Pool, uuid_ou_404
+from ampere.api.dependencias import ClienteId, Conexao, Pool, exigir_sessao, uuid_ou_404
 from ampere.conversas.conversas import (
     Conversa,
     Mensagem,
@@ -23,7 +24,7 @@ from ampere.fila.fila import enfileirar_mensagem
 from ampere.guardrails.mascaramento import mascarar
 from ampere.loja.pedidos import Cliente, StoreDePedidosPostgres, listar_clientes
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(exigir_sessao)])
 
 
 class NovaConversa(BaseModel):

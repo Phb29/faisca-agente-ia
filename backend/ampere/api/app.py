@@ -1,7 +1,11 @@
 """Fábrica do app FastAPI. `criar_app` recebe tudo de fora (configuração, pool, Memória
 Procedural), então quem monta de verdade é a raiz de composição (`ampere/cli.py`) e os
-testes montam com o que quiserem."""
+testes montam com o que quiserem.
 
+Toda rota exige uma sessão de login, menos `/health` e as de entrar e sair: cada router
+declara a exigência (`exigir_sessao`) nas próprias dependências."""
+
+import logging
 from collections.abc import Callable
 
 from fastapi import FastAPI
@@ -10,11 +14,13 @@ from fastapi.responses import JSONResponse
 from psycopg_pool import ConnectionPool
 from qdrant_client import QdrantClient
 
-from ampere.api import atendente, avaliacao, cliente, sse
+from ampere.api import acesso, atendente, avaliacao, cliente, sse
 from ampere.api.atendente import MemoriaProcedural
 from ampere.nucleo.config import Config
 
 VerificacaoDeSaude = Callable[[], bool]
+
+logger = logging.getLogger(__name__)
 
 
 def criar_app(
@@ -46,6 +52,13 @@ def criar_app(
             status_code=200 if ok else 503,
         )
 
+    if not (config.login_email.strip() and config.login_senha_hash.strip()):
+        logger.warning(
+            "Login desligado: sem LOGIN_EMAIL e LOGIN_SENHA_HASH, ninguém entra. "
+            "Gere o hash com `ampere hash-senha`."
+        )
+
+    app.include_router(acesso.router)
     app.include_router(cliente.router)
     app.include_router(sse.router)
     app.include_router(atendente.router)

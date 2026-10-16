@@ -1,9 +1,14 @@
-"""Acesso: sessões e limite de tentativas no Postgres."""
+"""Acesso: sessões e limite de tentativas no Postgres, as rotas de login e a sessão exigida em
+todas as outras rotas, menos `/health` e `/acesso/entrar`."""
 
 import hashlib
+import logging
 
+import httpx
 import pytest
+from httpx import ASGITransport
 
+from ampere.acesso.senha import gerar_hash
 from ampere.acesso.sessoes import (
     criar_sessao,
     encerrar_sessao,
@@ -11,10 +16,19 @@ from ampere.acesso.sessoes import (
     sessao_valida,
 )
 from ampere.acesso.tentativas import bloqueio, limpar_antigas, registrar
+from ampere.api.app import criar_app
+from ampere.nucleo.config import Config
 
 pytestmark = pytest.mark.integracao
 
 EMAIL = "dono@exemplo.com.br"
+SENHA = "uma senha forte de teste"
+HASH = gerar_hash(SENHA)
+IP = {"X-Ip-Do-Cliente": "203.0.113.7"}
+NENHUMA = "00000000-0000-0000-0000-000000000000"
+FALHOU = {"detail": "E-mail ou senha incorretos."}
+SEM_SESSAO = {"detail": "Sessão inválida ou expirada."}
+ABERTAS = {("GET", "/health"), ("POST", "/acesso/entrar"), ("POST", "/acesso/sair")}
 
 
 def _falhas(conn, quantas: int, *, email=EMAIL, ip="10.0.0.1", ha_minutos: float = 0) -> None:
@@ -124,3 +138,180 @@ def test_limpar_antigas_apaga_so_o_que_passou_de_um_dia(pool):
         assert limpar_antigas(conn) == 3
         restantes = conn.execute("SELECT count(*) AS n FROM tentativas_de_login").fetchone()
         assert restantes["n"] == 2
+
+
+# --- rotas ------------------------------------------------------------------------------
+
+
+def _app(banco, pool, **login):
+    login = login or {"login_email": "dono@exemplo.com.br", "login_senha_hash": HASH}
+    config = Config(database_url=banco, modelos_falsos=True, **login)
+    return criar_app(config, pool=pool, verificar_qdrant=lambda: True)
+
+
+def _cliente(app) -> httpx.AsyncClient:
+    return httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+@pytest.fixture
+async def client(banco, pool):
+    async with _cliente(_app(banco, pool)) as c:
+        yield c
+
+
+async def _entrar(client, email=EMAIL, senha=SENHA, headers=IP) -> httpx.Response:
+    return await client.post(
+        "/acesso/entrar", json={"email": email, "senha": senha}, headers=headers
+    )
+
+
+def _contar(pool, tabela: str, onde: str = "true") -> int:
+    with pool.connection() as conn:
+        return conn.execute(f"SELECT count(*) AS n FROM {tabela} WHERE {onde}").fetchone()["n"]
+
+
+async def test_login_certo_devolve_token_e_cria_sessao(client, pool):
+    resp = await _entrar(client, email="  dono@exemplo.com.br ")
+
+    assert resp.status_code == 200
+    corpo = resp.json()
+    assert set(corpo) == {"token", "email", "expira_em"}
+    assert corpo["email"] == EMAIL
+    with pool.connection() as conn:
+        sessao = conn.execute("SELECT ip, user_agent FROM sessoes").fetchone()
+        tentativa = conn.execute("SELECT email, ip, sucesso FROM tentativas_de_login").fetchone()
+    assert sessao["ip"] == "203.0.113.7"
+    assert tentativa == {"email": EMAIL, "ip": "203.0.113.7", "sucesso": True}
+
+    eu = await client.get("/acesso/eu", headers={"Authorization": f"Bearer {corpo['token']}"})
+    assert eu.status_code == 200
+    assert eu.json() == {"email": EMAIL, "expira_em": corpo["expira_em"]}
+
+
+async def test_senha_errada_e_email_errado_dao_o_mesmo_401(client, pool):
+    senha_errada = await _entrar(client, senha="outra senha")
+    email_errado = await _entrar(client, email="alguem@exemplo.com.br")
+
+    assert senha_errada.status_code == email_errado.status_code == 401
+    assert senha_errada.json() == email_errado.json() == FALHOU
+    assert _contar(pool, "sessoes") == 0
+    assert _contar(pool, "tentativas_de_login", "NOT sucesso") == 2
+
+
+async def test_sexta_tentativa_do_mesmo_ip_na_janela_da_429_com_retry_after(client, pool):
+    for _ in range(5):
+        assert (await _entrar(client, senha="chute")).status_code == 401
+
+    bloqueado = await _entrar(client)  # nem a senha certa passa
+
+    assert bloqueado.status_code == 429
+    assert 890 <= int(bloqueado.headers["Retry-After"]) <= 900
+    assert bloqueado.json() == {"detail": "Muitas tentativas. Tente de novo em 15 minutos."}
+    assert _contar(pool, "tentativas_de_login") == 5  # o 429 não registra tentativa
+    assert _contar(pool, "sessoes") == 0
+    outro_ip = await _entrar(client, headers={"X-Ip-Do-Cliente": "198.51.100.1"})
+    assert outro_ip.status_code == 200
+
+
+async def test_falhas_com_mais_de_15_minutos_nao_contam(client, pool):
+    with pool.connection() as conn:
+        _falhas(conn, 5, ip="203.0.113.7", ha_minutos=16)
+
+    assert (await _entrar(client)).status_code == 200
+
+
+async def test_sem_o_cabecalho_o_ip_e_o_da_conexao(client, pool):
+    await _entrar(client, senha="chute", headers={})
+
+    with pool.connection() as conn:
+        tentativa = conn.execute("SELECT ip FROM tentativas_de_login").fetchone()
+    assert tentativa["ip"] == "127.0.0.1"
+
+
+async def test_login_limpa_sessoes_expiradas_e_tentativas_antigas(client, pool):
+    with pool.connection() as conn:
+        criar_sessao(conn, EMAIL, horas=1, ip="10.0.0.1", user_agent="ua")
+        conn.execute("UPDATE sessoes SET expira_em = now() - interval '1 minute'")
+        _falhas(conn, 3, ip="10.0.0.1", ha_minutos=2 * 24 * 60)
+
+    await _entrar(client, senha="chute")
+
+    assert _contar(pool, "sessoes") == 0
+    assert _contar(pool, "tentativas_de_login") == 1
+
+
+async def test_sessao_expirada_da_401(client, pool):
+    token = (await _entrar(client)).json()["token"]
+    with pool.connection() as conn:
+        conn.execute("UPDATE sessoes SET expira_em = now() - interval '1 second'")
+
+    for rota in ("/acesso/eu", "/clientes"):
+        resp = await client.get(rota, headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 401, rota
+        assert resp.json() == SEM_SESSAO
+        assert resp.headers["WWW-Authenticate"] == "Bearer"
+
+
+async def test_sair_derruba_a_sessao_e_pode_repetir(client):
+    token = (await _entrar(client)).json()["token"]
+    bearer = {"Authorization": f"Bearer {token}"}
+
+    assert (await client.post("/acesso/sair", headers=bearer)).status_code == 204
+    assert (await client.get("/acesso/eu", headers=bearer)).status_code == 401
+    assert (await client.get("/clientes", headers=bearer)).status_code == 401
+    assert (await client.post("/acesso/sair", headers=bearer)).status_code == 204
+    assert (await client.post("/acesso/sair")).status_code == 204
+
+
+async def test_toda_rota_protegida_sem_bearer_da_401_e_health_continua_aberta(banco, pool):
+    """Percorre as rotas do contrato (o OpenAPI do app), então uma rota nova que esqueça a
+    sessão quebra este teste."""
+    app = _app(banco, pool)
+    protegidas = [
+        (metodo.upper(), caminho)
+        for caminho, metodos in app.openapi()["paths"].items()
+        for metodo in metodos
+        if (metodo.upper(), caminho) not in ABERTAS
+    ]
+    assert len(protegidas) >= 20
+
+    async with _cliente(app) as client:
+        for metodo, caminho in protegidas:
+            url = caminho.format_map({nome: NENHUMA for nome in _parametros(caminho)})
+            for headers in ({}, {"Authorization": "Bearer inventado"}, {"Authorization": "x"}):
+                resp = await client.request(metodo, url, headers={"X-Cliente-Id": "c1", **headers})
+                assert resp.status_code == 401, (metodo, caminho, headers)
+                assert resp.json() == SEM_SESSAO
+        assert (await client.get("/health")).status_code == 200
+
+
+async def test_sessao_vale_nas_rotas_protegidas(client, sessao):
+    assert (await client.get("/clientes", headers=sessao)).status_code == 200
+    assert (await client.get("/atendente/aprovacoes", headers=sessao)).status_code == 200
+    assert (await client.get("/avaliacao/amostra", headers=sessao)).status_code == 200
+
+
+async def test_sem_login_configurado_ninguem_entra_e_a_api_avisa(banco, pool, caplog):
+    with caplog.at_level(logging.WARNING, logger="ampere.api.app"):
+        _app(banco, pool)
+        assert caplog.text == ""
+        app = _app(banco, pool, login_email="", login_senha_hash="")
+
+    assert "LOGIN_EMAIL" in caplog.text
+    async with _cliente(app) as client:
+        assert (await _entrar(client)).status_code == 401
+        assert (await _entrar(client, email="")).status_code == 401
+
+
+async def test_hash_estragado_na_configuracao_da_401(banco, pool):
+    app = _app(banco, pool, login_email=EMAIL, login_senha_hash="$scrypt$estragado")
+
+    async with _cliente(app) as client:
+        resp = await _entrar(client)
+
+    assert resp.status_code == 401
+    assert resp.json() == FALHOU
+
+
+def _parametros(caminho: str) -> list[str]:
+    return [parte[1:-1] for parte in caminho.split("/") if parte.startswith("{")]

@@ -55,8 +55,11 @@ class Config(BaseSettings):
     # Memória de Curto Prazo: acima disto, as mensagens antigas viram resumo
     limite_mensagens_resumo: int = 20
 
-    # Tela do Atendente
-    atendente_token: str = "atendente-secreto"
+    # Login (ver ampere/acesso): uma conta só, que entra no chat, na Central do Atendente e na
+    # Tela de Avaliação. Sem e-mail ou hash, ninguém entra. O hash sai de `ampere hash-senha`.
+    login_email: str = ""
+    login_senha_hash: str = ""
+    sessao_horas: int = 12
 
 
 @cache

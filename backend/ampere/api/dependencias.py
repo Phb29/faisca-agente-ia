@@ -1,16 +1,19 @@
-"""Dependências das rotas: configuração, conexão com o banco, quem é o Cliente e se o token
-do Atendente confere."""
+"""Dependências das rotas: configuração, conexão com o banco, a sessão de quem chama, o IP do
+navegador e qual Cliente de exemplo o chat representa."""
 
-import secrets
 import uuid
 from collections.abc import Iterator
 from typing import Annotated
 
 import psycopg
 from fastapi import Depends, Header, HTTPException, Query, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from psycopg_pool import ConnectionPool
 
+from ampere.acesso.sessoes import Sessao, sessao_valida
 from ampere.nucleo.config import Config
+
+_bearer = HTTPBearer(auto_error=False, description="Token devolvido por POST /acesso/entrar.")
 
 
 def obter_config(request: Request) -> Config:
@@ -21,33 +24,61 @@ def obter_pool(request: Request) -> ConnectionPool:
     return request.app.state.pool
 
 
-def conexao(pool: Annotated[ConnectionPool, Depends(obter_pool)]) -> Iterator[psycopg.Connection]:
+Configuracao = Annotated[Config, Depends(obter_config)]
+Pool = Annotated[ConnectionPool, Depends(obter_pool)]
+
+
+def conexao(pool: Pool) -> Iterator[psycopg.Connection]:
     """Uma conexão do pool por request, em autocommit; transações são explícitas."""
     with pool.connection() as conn:
         yield conn
+
+
+def token_da_sessao(
+    credenciais: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+) -> str | None:
+    """O token do cabeçalho `Authorization: Bearer <token>`, ou None. A api não lê cookie: quem
+    guarda o token é o frontend, num cookie dele, e o repassa neste cabeçalho."""
+    return credenciais.credentials if credenciais else None
+
+
+def exigir_sessao(pool: Pool, token: Annotated[str | None, Depends(token_da_sessao)]) -> Sessao:
+    """A sessão de quem chama, ou 401. Lê numa conexão própria, devolvida na hora, e não na
+    `conexao` do request, que numa rota de stream ficaria presa enquanto o stream durasse."""
+    sessao = None
+    if token:
+        with pool.connection() as conn:
+            sessao = sessao_valida(conn, token)
+    if sessao is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Sessão inválida ou expirada.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return sessao
+
+
+def ip_do_cliente(request: Request, x_ip_do_cliente: Annotated[str | None, Header()] = None) -> str:
+    """O IP do navegador, para o limite de tentativas. Vem do `X-Ip-Do-Cliente`, que o frontend
+    monta a partir do `X-Forwarded-For` do Railway; a api só confia nele porque não tem
+    endereço público. Sem o cabeçalho, vale o IP da conexão."""
+    ip = (x_ip_do_cliente or "").split(",")[0].strip()
+    if not ip and request.client:
+        ip = request.client.host
+    return ip[:64] or "desconhecido"
 
 
 def cliente_atual(
     x_cliente_id: Annotated[str | None, Header()] = None,
     cliente_id: Annotated[str | None, Query()] = None,
 ) -> str:
-    """O Cliente vem do header `X-Cliente-Id` ou, na falta dele, da query `cliente_id` (o
-    EventSource do navegador não envia headers). Não há autenticação de verdade, de
-    propósito: está fora do escopo do projeto."""
+    """O Cliente de exemplo que o chat representa vem do header `X-Cliente-Id` ou, na falta
+    dele, da query `cliente_id` (o EventSource do navegador não envia headers). Não é
+    autenticação: quem pode usar o sistema é decidido pela sessão."""
     valor = (x_cliente_id or cliente_id or "").strip()
     if not valor:
         raise HTTPException(status_code=400, detail="informe X-Cliente-Id ou ?cliente_id=")
     return valor
-
-
-def exigir_atendente(
-    config: Annotated[Config, Depends(obter_config)],
-    x_atendente_token: Annotated[str | None, Header()] = None,
-) -> None:
-    """Comparação em tempo constante, para o tempo de resposta não vazar o token."""
-    recebido = (x_atendente_token or "").encode()
-    if not secrets.compare_digest(recebido, config.atendente_token.encode()):
-        raise HTTPException(status_code=401, detail="token de Atendente inválido")
 
 
 def uuid_ou_404(valor: str) -> str:
@@ -58,7 +89,8 @@ def uuid_ou_404(valor: str) -> str:
         raise HTTPException(status_code=404, detail="não encontrado") from exc
 
 
-Configuracao = Annotated[Config, Depends(obter_config)]
-Pool = Annotated[ConnectionPool, Depends(obter_pool)]
 Conexao = Annotated[psycopg.Connection, Depends(conexao)]
+TokenDaSessao = Annotated[str | None, Depends(token_da_sessao)]
+SessaoAtual = Annotated[Sessao, Depends(exigir_sessao)]
+IpDoCliente = Annotated[str, Depends(ip_do_cliente)]
 ClienteId = Annotated[str, Depends(cliente_atual)]

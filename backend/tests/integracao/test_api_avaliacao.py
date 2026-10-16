@@ -1,5 +1,6 @@
-"""Rotas da Tela de Avaliação: token, listas, amostra (202 e 409), liberação das abandonadas
-e o stream de uma amostra."""
+"""Rotas da Tela de Avaliação, com uma sessão aberta: listas, amostra (202 e 409), liberação
+das abandonadas e o stream de uma amostra. A exigência da sessão é testada em
+`test_acesso.py`."""
 
 import asyncio
 import random
@@ -30,32 +31,19 @@ from tests.integracao.apoio_sse import coletar_ate, eventos_sse, servidor_no_ar
 
 pytestmark = pytest.mark.integracao
 
-TOKEN = "token-de-teste"
-ATENDENTE = {"X-Atendente-Token": TOKEN}
 NENHUMA = "00000000-0000-0000-0000-000000000000"
 
 
 def _app(banco, pool):
-    config = Config(database_url=banco, atendente_token=TOKEN, modelos_falsos=True)
+    config = Config(database_url=banco, modelos_falsos=True)
     return criar_app(config, pool=pool, verificar_qdrant=lambda: True)
 
 
 @pytest.fixture
-async def client(banco, pool):
+async def client(banco, pool, sessao):
     transporte = ASGITransport(app=_app(banco, pool))
-    async with httpx.AsyncClient(transport=transporte, base_url="http://test") as c:
+    async with httpx.AsyncClient(transport=transporte, base_url="http://test", headers=sessao) as c:
         yield c
-
-
-async def test_tudo_exige_o_token_do_atendente(client):
-    for rota in (
-        "/avaliacao/amostra",
-        "/avaliacao/rag/execucoes",
-        f"/avaliacao/execucoes/{NENHUMA}",
-        f"/avaliacao/execucoes/{NENHUMA}/stream",
-    ):
-        assert (await client.get(rota)).status_code == 401, rota
-    assert (await client.post("/avaliacao/rag/amostra")).status_code == 401
 
 
 async def test_lista_as_execucoes_do_eval_sem_os_casos(client, banco):
@@ -64,15 +52,15 @@ async def test_lista_as_execucoes_do_eval_sem_os_casos(client, banco):
             conn, "agente", contexto={}, resumo={"tudo": 1.0}, casos=[{"id": "ag01"}]
         )
 
-    resp = await client.get("/avaliacao/agente/execucoes", headers=ATENDENTE)
-    inteira = await client.get(f"/avaliacao/execucoes/{execucao_id}", headers=ATENDENTE)
+    resp = await client.get("/avaliacao/agente/execucoes")
+    inteira = await client.get(f"/avaliacao/execucoes/{execucao_id}")
 
     assert resp.status_code == 200
     [execucao] = resp.json()
     assert execucao["id"] == execucao_id
     assert "casos" not in execucao
     assert inteira.json()["casos"] == [{"id": "ag01"}]
-    assert (await client.get("/avaliacao/rag/execucoes", headers=ATENDENTE)).json() == []
+    assert (await client.get("/avaliacao/rag/execucoes")).json() == []
 
 
 async def test_lista_vem_das_mais_novas_para_as_mais_velhas_ate_o_limite(client, banco):
@@ -84,28 +72,28 @@ async def test_lista_vem_das_mais_novas_para_as_mais_velhas_ate_o_limite(client,
         )
         nova = salvar_completa(conn, "juiz", contexto={}, resumo={}, casos=[])
 
-    todas = await client.get("/avaliacao/juiz/execucoes", headers=ATENDENTE)
-    uma = await client.get("/avaliacao/juiz/execucoes?limite=1", headers=ATENDENTE)
+    todas = await client.get("/avaliacao/juiz/execucoes")
+    uma = await client.get("/avaliacao/juiz/execucoes?limite=1")
 
     assert [e["id"] for e in todas.json()] == [nova, velha]
     assert [e["id"] for e in uma.json()] == [nova]
 
 
 async def test_eval_invalido_e_execucao_inexistente_sao_404(client):
-    assert (await client.get("/avaliacao/nada/execucoes", headers=ATENDENTE)).status_code == 404
-    assert (await client.post("/avaliacao/nada/amostra", headers=ATENDENTE)).status_code == 404
-    malformado = await client.get("/avaliacao/execucoes/nao-e-uuid", headers=ATENDENTE)
+    assert (await client.get("/avaliacao/nada/execucoes")).status_code == 404
+    assert (await client.post("/avaliacao/nada/amostra")).status_code == 404
+    malformado = await client.get("/avaliacao/execucoes/nao-e-uuid")
     assert malformado.status_code == 404
-    inexistente = await client.get(f"/avaliacao/execucoes/{NENHUMA}", headers=ATENDENTE)
+    inexistente = await client.get(f"/avaliacao/execucoes/{NENHUMA}")
     assert inexistente.status_code == 404
     # O stream responde 404 antes de abrir, e fecha a escuta que já tinha aberto.
     for execucao_id in ("nao-e-uuid", NENHUMA):
-        stream = await client.get(f"/avaliacao/execucoes/{execucao_id}/stream", headers=ATENDENTE)
+        stream = await client.get(f"/avaliacao/execucoes/{execucao_id}/stream")
         assert stream.status_code == 404, execucao_id
 
 
 async def test_amostra_cria_execucao_e_job_juntos(client, banco):
-    resp = await client.post("/avaliacao/juiz/amostra", headers=ATENDENTE)
+    resp = await client.post("/avaliacao/juiz/amostra")
 
     assert resp.status_code == 202
     execucao_id = resp.json()["execucao_id"]
@@ -115,16 +103,16 @@ async def test_amostra_cria_execucao_e_job_juntos(client, banco):
     assert job["conversa_id"] is None
     assert job["canal"] == canal_da_execucao(execucao_id)
     assert job["payload"] == {"execucao_id": execucao_id, "eval": "juiz"}
-    atual = (await client.get("/avaliacao/amostra", headers=ATENDENTE)).json()
+    atual = (await client.get("/avaliacao/amostra")).json()
     assert atual["id"] == execucao_id
     assert atual["status"] == "pendente"
     assert "casos" not in atual
 
 
 async def test_segunda_amostra_de_qualquer_eval_recebe_409_com_a_primeira(client, banco):
-    primeira = (await client.post("/avaliacao/rag/amostra", headers=ATENDENTE)).json()
+    primeira = (await client.post("/avaliacao/rag/amostra")).json()
 
-    resp = await client.post("/avaliacao/agente/amostra", headers=ATENDENTE)
+    resp = await client.post("/avaliacao/agente/amostra")
 
     assert resp.status_code == 409
     assert resp.json()["execucao_id"] == primeira["execucao_id"]
@@ -134,7 +122,7 @@ async def test_segunda_amostra_de_qualquer_eval_recebe_409_com_a_primeira(client
 
 
 async def test_sem_amostra_em_andamento_a_rota_devolve_null(client):
-    resp = await client.get("/avaliacao/amostra", headers=ATENDENTE)
+    resp = await client.get("/avaliacao/amostra")
 
     assert resp.status_code == 200
     assert resp.json() is None
@@ -149,13 +137,13 @@ async def test_amostra_abandonada_e_liberada_na_hora_de_criar_outra(client, banc
             (velha,),
         )
 
-    resp = await client.post("/avaliacao/agente/amostra", headers=ATENDENTE)
+    resp = await client.post("/avaliacao/agente/amostra")
 
     assert resp.status_code == 202
-    lida = (await client.get(f"/avaliacao/execucoes/{velha}", headers=ATENDENTE)).json()
+    lida = (await client.get(f"/avaliacao/execucoes/{velha}")).json()
     assert lida["status"] == "erro"
     assert lida["erro"] == "tempo esgotado"
-    atual = (await client.get("/avaliacao/amostra", headers=ATENDENTE)).json()
+    atual = (await client.get("/avaliacao/amostra")).json()
     assert atual["id"] == resp.json()["execucao_id"]
 
 
@@ -173,7 +161,7 @@ def _processar_um(banco: str, executor) -> None:
         processar_um_job(conn, executor)
 
 
-async def test_amostra_de_ponta_a_ponta_pela_fila_e_pelo_stream(servidor, banco, pool):
+async def test_amostra_de_ponta_a_ponta_pela_fila_e_pelo_stream(servidor, banco, pool, sessao):
     """A API cria a amostra, um worker com o executor de verdade (modelos falsos) roda o job,
     e o stream entrega a foto, o começo, as fases, os casos e o fim."""
     executor = ExecutorPorTipo(
@@ -186,11 +174,11 @@ async def test_amostra_de_ponta_a_ponta_pela_fila_e_pelo_stream(servidor, banco,
             )
         }
     )
-    async with httpx.AsyncClient(base_url=servidor, timeout=20) as client:
-        criada = await client.post("/avaliacao/juiz/amostra", headers=ATENDENTE)
+    async with httpx.AsyncClient(base_url=servidor, timeout=20, headers=sessao) as client:
+        criada = await client.post("/avaliacao/juiz/amostra")
         execucao_id = criada.json()["execucao_id"]
         rota = f"/avaliacao/execucoes/{execucao_id}/stream"
-        async with client.stream("GET", rota, headers=ATENDENTE) as r:
+        async with client.stream("GET", rota) as r:
             assert r.status_code == 200
             thread = threading.Thread(target=_processar_um, args=(banco, executor))
             thread.start()
@@ -211,22 +199,22 @@ async def test_amostra_de_ponta_a_ponta_pela_fila_e_pelo_stream(servidor, banco,
     assert len(lida["casos"]) == 3
 
 
-async def test_stream_de_execucao_terminada_manda_so_a_foto_e_fecha(servidor, banco):
+async def test_stream_de_execucao_terminada_manda_so_a_foto_e_fecha(servidor, banco, sessao):
     with conectar(banco, autocommit=True) as conn:
         execucao_id = salvar_completa(
             conn, "rag", contexto={}, resumo={"n": 1}, casos=[{"id": "rag-001"}]
         )
 
-    async with httpx.AsyncClient(base_url=servidor, timeout=10) as client:
+    async with httpx.AsyncClient(base_url=servidor, timeout=10, headers=sessao) as client:
         rota = f"/avaliacao/execucoes/{execucao_id}/stream"
-        async with client.stream("GET", rota, headers=ATENDENTE) as r:
+        async with client.stream("GET", rota) as r:
             recebidos = await asyncio.wait_for(coletar_ate(r, set()), timeout=10)
 
     assert [t for t, _ in recebidos] == ["eval_estado"]
     assert recebidos[0][1]["casos"] == [{"id": "rag-001"}]
 
 
-async def test_stream_no_meio_da_amostra_repoe_os_casos_prontos(servidor, banco):
+async def test_stream_no_meio_da_amostra_repoe_os_casos_prontos(servidor, banco, sessao):
     """É o F5 no meio da aula: a foto traz o que já terminou, e o resto chega pelo canal."""
     with conectar(banco, autocommit=True) as conn:
         execucao_id = criar_amostra(conn, "agente")
@@ -235,9 +223,9 @@ async def test_stream_no_meio_da_amostra_repoe_os_casos_prontos(servidor, banco)
         )
         anexar_caso(conn, execucao_id, {"id": "ag01"})
 
-    async with httpx.AsyncClient(base_url=servidor, timeout=10) as client:
+    async with httpx.AsyncClient(base_url=servidor, timeout=10, headers=sessao) as client:
         rota = f"/avaliacao/execucoes/{execucao_id}/stream"
-        async with client.stream("GET", rota, headers=ATENDENTE) as r:
+        async with client.stream("GET", rota) as r:
             eventos = eventos_sse(r)
             foto = await asyncio.wait_for(anext(eventos), timeout=10)
             with conectar(banco, autocommit=True) as conn:

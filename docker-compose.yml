@@ -17,7 +17,9 @@ x-backend: &backend
     LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
     LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
     LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-https://cloud.langfuse.com}
-    ATENDENTE_TOKEN: ${ATENDENTE_TOKEN:-atendente-secreto}
+    LOGIN_EMAIL: ${LOGIN_EMAIL:-}
+    LOGIN_SENHA_HASH: ${LOGIN_SENHA_HASH:-}
+    SESSAO_HORAS: ${SESSAO_HORAS:-12}
   restart: unless-stopped
   depends_on:
     postgres:

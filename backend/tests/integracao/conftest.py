@@ -1,4 +1,5 @@
-"""Fixtures de integração: um banco Postgres novo por teste, migrado do zero.
+"""Fixtures de integração: um banco Postgres novo por teste, migrado do zero, e uma sessão de
+login aberta nele.
 
 Os testes daqui pulam quando `DATABASE_URL` não está no ambiente. Cada teste recebe um
 banco `ampere_test_<hex>` criado a partir da URL base e apagado ao fim, para que nenhum
@@ -14,6 +15,7 @@ import pytest
 from psycopg import sql
 from psycopg_pool import ConnectionPool
 
+from ampere.acesso.sessoes import criar_sessao
 from ampere.nucleo.banco import criar_pool
 from ampere.nucleo.migracao import migrar
 
@@ -55,3 +57,14 @@ def pool(banco: str) -> Iterator[ConnectionPool]:
         yield pool
     finally:
         pool.close()
+
+
+@pytest.fixture
+def sessao(pool: ConnectionPool) -> dict[str, str]:
+    """O cabeçalho de uma sessão aberta direto no banco, sem passar pelo login, para os testes
+    das rotas protegidas."""
+    with pool.connection() as conn:
+        token, _ = criar_sessao(
+            conn, "dono@exemplo.com.br", horas=1, ip="127.0.0.1", user_agent="pytest"
+        )
+    return {"Authorization": f"Bearer {token}"}

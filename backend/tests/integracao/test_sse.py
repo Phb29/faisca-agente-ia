@@ -63,8 +63,10 @@ def _executor_de_teste() -> ExecutorFalso:
     return ExecutorFalso(eventos)
 
 
-async def test_sse_recebe_os_cinco_eventos_na_ordem_e_reenvia_ao_reconectar(servidor, banco):
-    async with httpx.AsyncClient(base_url=servidor, timeout=10) as client:
+async def test_sse_recebe_os_cinco_eventos_na_ordem_e_reenvia_ao_reconectar(
+    servidor, banco, sessao
+):
+    async with httpx.AsyncClient(base_url=servidor, timeout=10, headers=sessao) as client:
         criada = await client.post("/conversas", headers=CLIENTE, json={})
         conversa_id = criada.json()["id"]
         for message_id in ("m-1", "m-2"):
@@ -114,9 +116,9 @@ async def test_sse_recebe_os_cinco_eventos_na_ordem_e_reenvia_ao_reconectar(serv
         assert outro.status_code == 404
 
 
-async def test_sse_aceita_cliente_id_por_query_string(servidor, banco):
+async def test_sse_aceita_cliente_id_por_query_string(servidor, banco, sessao):
     """O EventSource do navegador não envia headers; a query string faz as vezes dele."""
-    async with httpx.AsyncClient(base_url=servidor, timeout=10) as client:
+    async with httpx.AsyncClient(base_url=servidor, timeout=10, headers=sessao) as client:
         criada = await client.post("/conversas", headers=CLIENTE, json={})
         conversa_id = criada.json()["id"]
         resp = await client.post(
