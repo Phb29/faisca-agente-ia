@@ -140,7 +140,7 @@ Evals não são testes e não rodam no pytest. O CI roda ruff, os unitários, o 
 
 ## Out of Scope
 
-Autenticação de verdade de Cliente ou de Atendente. Fluxo completo de atendimento humano (o Atendente não responde ao Cliente pela Tela do Atendente, só aprova, rejeita e lê). Cenários de eval com vários turnos. Interface própria de anotação (a rotulagem é em planilha). Gerenciamento de prompts no Langfuse. Langfuse self-hosted. Redis ou qualquer broker dedicado. Ações além das quatro (cancelar Pedido, alterar cadastro, cupons). Chunking de tamanho fixo e chunking por LLM. Aprendizado automático da Memória Procedural (ela é editada pelo Atendente). Apostila de teoria no repositório. Internacionalização. Escala horizontal além de dois workers de teste.
+Contas por Cliente ou por Atendente (desde 16/10/2026 há um login único que protege o chat, a Central e a Avaliação, ver ADR 0010; o Cliente de exemplo continua escolhido depois do login). Fluxo completo de atendimento humano (o Atendente não responde ao Cliente pela Tela do Atendente, só aprova, rejeita e lê). Cenários de eval com vários turnos. Interface própria de anotação (a rotulagem é em planilha). Gerenciamento de prompts no Langfuse. Langfuse self-hosted. Redis ou qualquer broker dedicado. Ações além das quatro (cancelar Pedido, alterar cadastro, cupons). Chunking de tamanho fixo e chunking por LLM. Aprendizado automático das instruções do Atendente na Memória Procedural (elas são editadas só pela Central; desde 16/10/2026 só as preferências do Cliente sobre a forma de falar são gravadas sozinhas, ver docs/superpowers/specs/2026-10-16-preferencias-do-cliente.md). Apostila de teoria no repositório. Internacionalização. Escala horizontal além de dois workers de teste.
 
 ## Further Notes
 
