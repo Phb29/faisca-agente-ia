@@ -1,6 +1,7 @@
 """Borda principal: o grafo compilado, com modelos falsos, Jev falso, checkpointer e Store em
 memória. Nenhum token é gasto. Cada teste exercita um comportamento observável do grafo."""
 
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -148,6 +149,32 @@ def test_reembolso_de_valor_baixo_e_automatico():
     assert estado["desfecho"] == "Resolvida"
     assert len(cenario.pedidos.reembolsos_recentes("cli_ana")) == 1
     assert cenario.grafo.get_state(cenario.invocar_config()).next == ()
+
+
+def test_reembolso_que_outra_conversa_gravou_antes_nao_sai_duas_vezes():
+    # Outra Conversa da Ana reembolsou o P1 há 90 dias? Não: há segundos, mas a conferência
+    # desta Conversa leu o banco antes da outra gravar. A data antiga só tira o Gate do caminho.
+    outra = Reembolso(
+        pedido_id="P1",
+        cliente_id="cli_ana",
+        valor=Decimal("199.90"),
+        criado_em=datetime.now(UTC) - timedelta(days=90),
+    )
+    cenario = Cenario(
+        gerador=[
+            tool_call("emitir_reembolso", {"pedido_id": "P1", "motivo": "fone com defeito"}),
+            "Esse Pedido já tinha sido reembolsado.",
+        ],
+        jev=JevFalso(choices={"intencao": "transacao"}, nouls={"exige_aprovacao": 0.1}),
+        reembolsos=[outra],
+    )
+    cenario.pedidos.reembolso_do_pedido = lambda cliente_id, pedido_id: None
+
+    estado = cenario.turno("quero reembolso do P1")
+
+    [resultado] = [m for m in estado["messages"] if isinstance(m, ToolMessage)]
+    assert "já foi reembolsado" in resultado.content
+    assert cenario.pedidos._reembolsos == [outra]
 
 
 def test_reembolso_acima_do_limite_interrompe_e_retoma_com_aprovacao():

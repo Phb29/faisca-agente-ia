@@ -44,7 +44,7 @@ def test_store_de_pedidos_so_enxerga_pedidos_do_cliente_atual():
 def test_store_de_pedidos_registra_reembolso_e_lista_os_recentes():
     store = StoreDePedidosEmMemoria(PEDIDOS)
     antigo = Reembolso(
-        pedido_id="P1",
+        pedido_id="P0",
         cliente_id="cli_ana",
         valor=Decimal("10"),
         criado_em=datetime.now(UTC) - timedelta(days=90),
@@ -160,3 +160,12 @@ def test_resumo_do_pedido_usa_o_formato_que_o_cliente_le():
     assert notebook.resumo() == (
         "Pedido P2: Notebook (notebooks), R$ 4.899,90, status em transporte, feito em 01/09/2026"
     )
+
+
+def test_store_de_pedidos_recusa_o_segundo_reembolso_do_mesmo_pedido():
+    store = StoreDePedidosEmMemoria(PEDIDOS)
+    reembolso = Reembolso(pedido_id="P1", cliente_id="cli_ana", valor=Decimal("199.90"))
+
+    assert store.registrar_reembolso(reembolso) is True
+    assert store.registrar_reembolso(reembolso) is False
+    assert len(store.reembolsos_recentes("cli_ana")) == 1

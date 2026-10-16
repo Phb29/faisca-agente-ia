@@ -110,9 +110,14 @@ def criar_tools(
                 )
             aprovado_pelo_atendente = True
 
-        pedidos.registrar_reembolso(
+        registrado = pedidos.registrar_reembolso(
             Reembolso(pedido_id=pedido.id, cliente_id=turno.cliente_id, valor=pedido.valor)
         )
+        if not registrado:
+            # Outra Conversa reembolsou este Pedido entre a conferência lá em cima e agora.
+            return (
+                f"Não é possível reembolsar o Pedido {pedido.id}: este Pedido já foi reembolsado."
+            )
         por_quem = " (aprovado pelo Atendente)" if aprovado_pelo_atendente else ""
         valor = formatar_reais(pedido.valor)
         return f"Reembolso de {valor} do Pedido {pedido.id} registrado{por_quem}."

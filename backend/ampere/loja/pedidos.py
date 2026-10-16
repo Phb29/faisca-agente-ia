@@ -59,7 +59,10 @@ class StoreDePedidos(Protocol):
     def obter(self, cliente_id: str, pedido_id: str) -> Pedido | None: ...
     def reembolsos_recentes(self, cliente_id: str, *, dias: int = 30) -> list[Reembolso]: ...
     def reembolso_do_pedido(self, cliente_id: str, pedido_id: str) -> Reembolso | None: ...
-    def registrar_reembolso(self, reembolso: Reembolso) -> None: ...
+    def registrar_reembolso(self, reembolso: Reembolso) -> bool:
+        """Grava o Reembolso e devolve True; devolve False se o Pedido já tinha um. Quem decide
+        é a gravação, não a consulta de antes: duas Conversas podem consultar ao mesmo tempo."""
+        ...
 
 
 class StoreDePedidosEmMemoria:
@@ -87,8 +90,11 @@ class StoreDePedidosEmMemoria:
             None,
         )
 
-    def registrar_reembolso(self, reembolso: Reembolso) -> None:
+    def registrar_reembolso(self, reembolso: Reembolso) -> bool:
+        if any(r.pedido_id == reembolso.pedido_id for r in self._reembolsos):
+            return False
         self._reembolsos.append(reembolso)
+        return True
 
 
 class StoreDePedidosPostgres:
@@ -129,12 +135,16 @@ class StoreDePedidosPostgres:
         )
         return reembolsos[0] if reembolsos else None
 
-    def registrar_reembolso(self, reembolso: Reembolso) -> None:
+    def registrar_reembolso(self, reembolso: Reembolso) -> bool:
+        """O índice um_reembolso_por_pedido (migração 0006) barra o segundo Reembolso do mesmo
+        Pedido, mesmo quando duas Conversas passam pela conferência ao mesmo tempo."""
         with self._pool.connection() as conn:
-            conn.execute(
-                "INSERT INTO reembolsos (pedido_id, cliente_id, valor) VALUES (%s, %s, %s)",
+            inserido = conn.execute(
+                "INSERT INTO reembolsos (pedido_id, cliente_id, valor) VALUES (%s, %s, %s) "
+                "ON CONFLICT (pedido_id) DO NOTHING RETURNING pedido_id",
                 (reembolso.pedido_id, reembolso.cliente_id, reembolso.valor),
-            )
+            ).fetchone()
+        return inserido is not None
 
     def _pedidos(self, sql: str, parametros: tuple) -> list[Pedido]:
         with self._pool.connection() as conn, conn.cursor(row_factory=class_row(Pedido)) as cur:
