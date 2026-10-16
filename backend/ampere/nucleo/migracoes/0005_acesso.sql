@@ -1,8 +1,11 @@
 -- Login: as sessões abertas e as tentativas de entrar (ver ampere/acesso).
 -- `sessoes.id` é o sha256 do token: quem lê o banco não consegue se passar por ninguém.
+-- `credencial` é a marca do e-mail e do hash da senha da conta quando a sessão abriu: trocar
+-- a senha ou o e-mail derruba as sessões abertas antes.
 CREATE TABLE IF NOT EXISTS sessoes (
     id text PRIMARY KEY,
     email text NOT NULL,
+    credencial text NOT NULL,
     criada_em timestamptz NOT NULL DEFAULT now(),
     expira_em timestamptz NOT NULL,
     ip text NOT NULL,

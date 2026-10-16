@@ -17,6 +17,7 @@ from ampere.acesso.sessoes import (
     criar_sessao,
     encerrar_sessao,
     limpar_expiradas,
+    marca_da_credencial,
     sessao_valida,
 )
 from ampere.acesso.tentativas import Bloqueado, comecar, limpar_antigas, marcar_sucesso
@@ -29,6 +30,7 @@ pytestmark = pytest.mark.integracao
 EMAIL = "dono@exemplo.com.br"
 SENHA = "uma senha forte de teste"
 HASH = gerar_hash(SENHA)
+MARCA = marca_da_credencial(EMAIL, HASH)
 IP = {"X-Ip-Do-Cliente": "203.0.113.7"}
 NENHUMA = "00000000-0000-0000-0000-000000000000"
 FALHOU = {"detail": "E-mail ou senha incorretos."}
@@ -61,9 +63,11 @@ def _contar_em(conn, onde: str = "true") -> int:
 
 def test_sessao_criada_vale_e_so_o_hash_do_token_fica_no_banco(pool):
     with pool.connection() as conn:
-        token, expira_em = criar_sessao(conn, EMAIL, horas=12, ip="10.0.0.1", user_agent="ua")
+        token, expira_em = criar_sessao(
+            conn, EMAIL, credencial=MARCA, horas=12, ip="10.0.0.1", user_agent="ua"
+        )
         gravada = conn.execute("SELECT *, now() AS agora FROM sessoes").fetchone()
-        sessao = sessao_valida(conn, token)
+        sessao = sessao_valida(conn, token, credencial=MARCA)
 
     assert len(token) >= 40
     assert gravada["id"] == hashlib.sha256(token.encode()).hexdigest()
@@ -77,35 +81,61 @@ def test_sessao_criada_vale_e_so_o_hash_do_token_fica_no_banco(pool):
 
 def test_token_desconhecido_ou_vazio_nao_vale(pool):
     with pool.connection() as conn:
-        criar_sessao(conn, EMAIL, horas=12, ip="10.0.0.1", user_agent="ua")
+        criar_sessao(conn, EMAIL, credencial=MARCA, horas=12, ip="10.0.0.1", user_agent="ua")
 
-        assert sessao_valida(conn, "token-inventado") is None
-        assert sessao_valida(conn, "") is None
+        assert sessao_valida(conn, "token-inventado", credencial=MARCA) is None
+        assert sessao_valida(conn, "", credencial=MARCA) is None
 
 
 def test_sessao_expirada_nao_vale_e_e_limpa(pool):
     with pool.connection() as conn:
-        velho, _ = criar_sessao(conn, EMAIL, horas=12, ip="10.0.0.1", user_agent="ua")
-        novo, _ = criar_sessao(conn, EMAIL, horas=12, ip="10.0.0.1", user_agent="ua")
+        velho, _ = criar_sessao(
+            conn, EMAIL, credencial=MARCA, horas=12, ip="10.0.0.1", user_agent="ua"
+        )
+        novo, _ = criar_sessao(
+            conn, EMAIL, credencial=MARCA, horas=12, ip="10.0.0.1", user_agent="ua"
+        )
         conn.execute(
             "UPDATE sessoes SET expira_em = now() - interval '1 second' WHERE id = %s",
             (hashlib.sha256(velho.encode()).hexdigest(),),
         )
 
-        assert sessao_valida(conn, velho) is None
+        assert sessao_valida(conn, velho, credencial=MARCA) is None
         assert limpar_expiradas(conn) == 1
         assert conn.execute("SELECT count(*) AS n FROM sessoes").fetchone()["n"] == 1
-        assert sessao_valida(conn, novo) is not None
+        assert sessao_valida(conn, novo, credencial=MARCA) is not None
+
+
+def test_sessao_de_outra_credencial_nao_vale(pool):
+    with pool.connection() as conn:
+        token, _ = criar_sessao(
+            conn, EMAIL, credencial=MARCA, horas=12, ip="10.0.0.1", user_agent="ua"
+        )
+
+        assert sessao_valida(conn, token, credencial=marca_da_credencial(EMAIL, "outro")) is None
+        assert sessao_valida(conn, token, credencial=MARCA) is not None
+
+
+def test_marca_da_credencial_e_curta_e_ignora_caixa_e_espacos():
+    marca = marca_da_credencial(EMAIL, HASH)
+
+    assert len(marca) == 16 and int(marca, 16) >= 0
+    assert marca == hashlib.sha256(f"{EMAIL}\n{HASH}".encode()).hexdigest()[:16]
+    assert marca_da_credencial(" dono@exemplo.com.br ", f" {HASH}\n") == marca
+    assert marca_da_credencial(EMAIL, gerar_hash(SENHA)) != marca
+    assert marca_da_credencial("outro@exemplo.com.br", HASH) != marca
 
 
 def test_encerrar_derruba_a_sessao_e_pode_repetir(pool):
     with pool.connection() as conn:
-        token, _ = criar_sessao(conn, EMAIL, horas=12, ip="10.0.0.1", user_agent="ua")
+        token, _ = criar_sessao(
+            conn, EMAIL, credencial=MARCA, horas=12, ip="10.0.0.1", user_agent="ua"
+        )
 
         encerrar_sessao(conn, token)
         encerrar_sessao(conn, token)
 
-        assert sessao_valida(conn, token) is None
+        assert sessao_valida(conn, token, credencial=MARCA) is None
 
 
 # --- tentativas -------------------------------------------------------------------------
@@ -217,6 +247,16 @@ async def client(banco, pool):
         yield c
 
 
+@pytest.fixture
+def sessao(pool) -> dict[str, str]:
+    """Como o `sessao` do conftest, mas para a conta configurada nos apps deste módulo."""
+    with pool.connection() as conn:
+        token, _ = criar_sessao(
+            conn, EMAIL, credencial=MARCA, horas=1, ip="127.0.0.1", user_agent="pytest"
+        )
+    return {"Authorization": f"Bearer {token}"}
+
+
 async def _entrar(client, email=EMAIL, senha=SENHA, headers=IP) -> httpx.Response:
     return await client.post(
         "/acesso/entrar", json={"email": email, "senha": senha}, headers=headers
@@ -303,7 +343,7 @@ async def test_sem_o_cabecalho_o_ip_e_o_da_conexao(client, pool):
 async def test_so_o_login_certo_limpa_sessoes_expiradas_e_tentativas_antigas(client, pool):
     """Limpar custa uma varredura; o login certo é raro, a tentativa errada não."""
     with pool.connection() as conn:
-        criar_sessao(conn, EMAIL, horas=1, ip="10.0.0.1", user_agent="ua")
+        criar_sessao(conn, EMAIL, credencial=MARCA, horas=1, ip="10.0.0.1", user_agent="ua")
         conn.execute("UPDATE sessoes SET expira_em = now() - interval '1 minute'")
         _falhas(conn, 3, ip="10.0.0.1", ha_minutos=2 * 24 * 60)
 
@@ -328,6 +368,25 @@ async def test_sessao_expirada_da_401(client, pool):
         assert resp.status_code == 401, rota
         assert resp.json() == SEM_SESSAO
         assert resp.headers["WWW-Authenticate"] == "Bearer"
+
+
+async def test_trocar_a_senha_ou_o_email_da_conta_derruba_as_sessoes_abertas(banco, pool):
+    async with _cliente(_app(banco, pool)) as client:
+        bearer = {"Authorization": f"Bearer {(await _entrar(client)).json()['token']}"}
+        assert (await client.get("/acesso/eu", headers=bearer)).status_code == 200
+
+    for troca in (
+        {"login_senha_hash": gerar_hash("a senha nova")},
+        {"login_email": "outro@exemplo.com.br"},
+    ):
+        async with _cliente(_app(banco, pool, **troca)) as client:
+            for rota in ("/acesso/eu", "/clientes"):
+                resp = await client.get(rota, headers=bearer)
+                assert (resp.status_code, resp.json()) == (401, SEM_SESSAO), (troca, rota)
+
+    mesma_conta = {"login_email": " dono@exemplo.com.br ", "login_senha_hash": f" {HASH} "}
+    async with _cliente(_app(banco, pool, **mesma_conta)) as client:
+        assert (await client.get("/acesso/eu", headers=bearer)).status_code == 200
 
 
 async def test_sair_derruba_a_sessao_e_pode_repetir(client):

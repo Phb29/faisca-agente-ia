@@ -34,7 +34,14 @@ from ampere.acesso.tentativas import (
     marcar_sucesso,
     normalizar,
 )
-from ampere.api.dependencias import Configuracao, IpDoCliente, Pool, SessaoAtual, TokenDaSessao
+from ampere.api.dependencias import (
+    Configuracao,
+    IpDoCliente,
+    Pool,
+    SessaoAtual,
+    TokenDaSessao,
+    credencial_atual,
+)
 from ampere.nucleo.config import Config
 
 LOGINS_SIMULTANEOS = 4
@@ -118,17 +125,20 @@ async def _entrar(
     if not await run_in_threadpool(_credenciais_conferem, config, email, senha):
         raise HTTPException(status_code=401, detail="E-mail ou senha incorretos.")
     token, expira_em = await _no_banco(
-        pool, _abrir_sessao, tentativa, email, config.sessao_horas, ip, user_agent
+        pool, _abrir_sessao, tentativa, email, config, ip, user_agent
     )
     return SessaoAberta(token=token, email=email, expira_em=expira_em)
 
 
 def _abrir_sessao(
-    conn: psycopg.Connection, tentativa: int, email: str, horas: int, ip: str, user_agent: str
+    conn: psycopg.Connection, tentativa: int, email: str, config: Config, ip: str, user_agent: str
 ) -> tuple[str, datetime]:
+    credencial, horas = credencial_atual(config), config.sessao_horas
     with conn.transaction():
         marcar_sucesso(conn, tentativa)
-        aberta = criar_sessao(conn, email, horas=horas, ip=ip, user_agent=user_agent)
+        aberta = criar_sessao(
+            conn, email, credencial=credencial, horas=horas, ip=ip, user_agent=user_agent
+        )
     limpar_expiradas(conn)
     limpar_antigas(conn)
     return aberta

@@ -15,8 +15,9 @@ import pytest
 from psycopg import sql
 from psycopg_pool import ConnectionPool
 
-from ampere.acesso.sessoes import criar_sessao
+from ampere.acesso.sessoes import criar_sessao, marca_da_credencial
 from ampere.nucleo.banco import criar_pool
+from ampere.nucleo.config import Config
 from ampere.nucleo.migracao import migrar
 
 pytestmark = pytest.mark.integracao
@@ -60,11 +61,20 @@ def pool(banco: str) -> Iterator[ConnectionPool]:
 
 
 @pytest.fixture
-def sessao(pool: ConnectionPool) -> dict[str, str]:
+def sessao(banco: str, pool: ConnectionPool) -> dict[str, str]:
     """O cabeçalho de uma sessão aberta direto no banco, sem passar pelo login, para os testes
-    das rotas protegidas."""
+    das rotas protegidas. Ela vale para os apps montados com
+    `Config(database_url=banco, modelos_falsos=True)`, como os destes testes: a sessão leva a
+    marca da conta dessa configuração. Quem configura outra conta sobrescreve o fixture."""
+    config = Config(database_url=banco, modelos_falsos=True)
+    credencial = marca_da_credencial(config.login_email, config.login_senha_hash)
     with pool.connection() as conn:
         token, _ = criar_sessao(
-            conn, "dono@exemplo.com.br", horas=1, ip="127.0.0.1", user_agent="pytest"
+            conn,
+            "dono@exemplo.com.br",
+            credencial=credencial,
+            horas=1,
+            ip="127.0.0.1",
+            user_agent="pytest",
         )
     return {"Authorization": f"Bearer {token}"}

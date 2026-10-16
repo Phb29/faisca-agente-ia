@@ -14,7 +14,7 @@ from fastapi import Depends, Header, HTTPException, Query, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from psycopg_pool import ConnectionPool
 
-from ampere.acesso.sessoes import Sessao, sessao_valida
+from ampere.acesso.sessoes import Sessao, marca_da_credencial, sessao_valida
 from ampere.nucleo.config import Config
 
 _bearer = HTTPBearer(auto_error=False, description="Token devolvido por POST /acesso/entrar.")
@@ -48,13 +48,21 @@ async def token_da_sessao(
     return credenciais.credentials if credenciais else None
 
 
-def exigir_sessao(pool: Pool, token: Annotated[str | None, Depends(token_da_sessao)]) -> Sessao:
+def credencial_atual(config: Config) -> str:
+    """A marca da conta configurada agora. Sessão aberta com outra marca não vale."""
+    return marca_da_credencial(config.login_email, config.login_senha_hash)
+
+
+def exigir_sessao(
+    pool: Pool, config: Configuracao, token: Annotated[str | None, Depends(token_da_sessao)]
+) -> Sessao:
     """A sessão de quem chama, ou 401. Lê numa conexão própria, devolvida na hora, e não na
-    `conexao` do request, que numa rota de stream ficaria presa enquanto o stream durasse."""
+    `conexao` do request, que numa rota de stream ficaria presa enquanto o stream durasse.
+    Sessão aberta antes de trocarem a senha ou o e-mail da conta também dá 401."""
     sessao = None
     if token:
         with pool.connection(timeout=ESPERA_POR_CONEXAO) as conn:
-            sessao = sessao_valida(conn, token)
+            sessao = sessao_valida(conn, token, credencial=credencial_atual(config))
     if sessao is None:
         raise HTTPException(
             status_code=401,
