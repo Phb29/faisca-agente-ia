@@ -23,3 +23,6 @@ CREATE TABLE IF NOT EXISTS tentativas_de_login (
 
 CREATE INDEX IF NOT EXISTS tentativas_por_ip ON tentativas_de_login (ip, momento);
 CREATE INDEX IF NOT EXISTS tentativas_por_email ON tentativas_de_login (email, momento);
+-- Os sucessos dizem de quais IPs a conta já entrou: dali, o limite por e-mail não vale.
+CREATE INDEX IF NOT EXISTS sucessos_por_email_e_ip ON tentativas_de_login (email, ip, momento)
+    WHERE sucesso;

@@ -5,6 +5,10 @@ quem chuta muitas senhas de um lugar só; o por e-mail segura quem chuta a senha
 de muitos lugares, sem travar a conta para sempre. Só falhas contam, e o e-mail é sempre
 normalizado (`strip().lower()`).
 
+O limite por e-mail não vale para o IP de onde a conta entrou com sucesso nos últimos 30 dias.
+Sem isso, qualquer um trancaria o dono para fora por 15 minutos com 20 chutes de onde
+quisesse. Por isso os sucessos ficam guardados 30 dias, e as falhas, só um.
+
 Toda tentativa entra no banco como falha antes de a senha ser conferida (`comecar`), e só vira
 sucesso depois, se a senha bater (`marcar_sucesso`). A conexão precisa estar em autocommit,
 como as do pool: cada tentativa fica visível na hora para as outras que correm junto, e uma
@@ -18,6 +22,7 @@ import psycopg
 JANELA_EM_MINUTOS = 15
 FALHAS_POR_IP = 5
 FALHAS_POR_EMAIL = 20
+DIAS_DE_CONFIANCA = 30
 
 
 class Bloqueado(Exception):
@@ -41,10 +46,9 @@ def comecar(conn: psycopg.Connection, email: str, ip: str) -> int:
         "INSERT INTO tentativas_de_login (email, ip, sucesso) VALUES (%s, %s, false) RETURNING id",
         (email, ip),
     ).fetchone()["id"]
-    esperas = [
-        _espera(conn, "ip", ip, FALHAS_POR_IP, tentativa),
-        _espera(conn, "email", email, FALHAS_POR_EMAIL, tentativa),
-    ]
+    esperas = [_espera(conn, "ip", ip, FALHAS_POR_IP, tentativa)]
+    if not _ip_de_confianca(conn, email, ip):
+        esperas.append(_espera(conn, "email", email, FALHAS_POR_EMAIL, tentativa))
     espera = max((s for s in esperas if s is not None), default=None)
     if espera is not None:
         conn.execute("DELETE FROM tentativas_de_login WHERE id = %s", (tentativa,))
@@ -57,10 +61,22 @@ def marcar_sucesso(conn: psycopg.Connection, tentativa: int) -> None:
 
 
 def limpar_antigas(conn: psycopg.Connection) -> int:
-    """Apaga as tentativas com mais de um dia: a janela é de minutos, o resto é só volume."""
+    """Apaga as falhas com mais de um dia (a janela é de minutos, o resto é só volume) e os
+    sucessos com mais de 30 dias (eles só servem para reconhecer o IP de quem já entrou)."""
     return conn.execute(
-        "DELETE FROM tentativas_de_login WHERE momento < now() - interval '1 day'"
+        "DELETE FROM tentativas_de_login WHERE momento < now() - "
+        "CASE WHEN sucesso THEN make_interval(days => %s) ELSE interval '1 day' END",
+        (DIAS_DE_CONFIANCA,),
     ).rowcount
+
+
+def _ip_de_confianca(conn: psycopg.Connection, email: str, ip: str) -> bool:
+    """Se a conta já entrou com sucesso deste IP nos últimos `DIAS_DE_CONFIANCA` dias."""
+    return conn.execute(
+        "SELECT EXISTS (SELECT 1 FROM tentativas_de_login WHERE email = %s AND ip = %s "
+        "AND sucesso AND momento > now() - make_interval(days => %s)) AS confia",
+        (email, ip, DIAS_DE_CONFIANCA),
+    ).fetchone()["confia"]
 
 
 def _espera(

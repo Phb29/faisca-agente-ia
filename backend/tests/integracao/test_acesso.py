@@ -36,13 +36,19 @@ SEM_SESSAO = {"detail": "Sessão inválida ou expirada."}
 ABERTAS = {("GET", "/health"), ("POST", "/acesso/entrar"), ("POST", "/acesso/sair")}
 
 
-def _falhas(conn, quantas: int, *, email=EMAIL, ip="10.0.0.1", ha_minutos: float = 0) -> None:
+def _tentativas(
+    conn, quantas: int, *, sucesso: bool, email=EMAIL, ip="10.0.0.1", ha_minutos: float = 0
+) -> None:
     for _ in range(quantas):
         conn.execute(
             "INSERT INTO tentativas_de_login (email, ip, sucesso, momento) "
-            "VALUES (%s, %s, false, now() - make_interval(secs => %s))",
-            (email, ip, ha_minutos * 60),
+            "VALUES (%s, %s, %s, now() - make_interval(secs => %s))",
+            (email, ip, sucesso, ha_minutos * 60),
         )
+
+
+def _falhas(conn, quantas: int, **kwargs) -> None:
+    _tentativas(conn, quantas, sucesso=False, **kwargs)
 
 
 def _contar_em(conn, onde: str = "true") -> int:
@@ -157,14 +163,39 @@ def test_vinte_falhas_do_mesmo_email_bloqueiam_de_qualquer_ip(pool):
         comecar(conn, "outro@x.com", "10.0.2.1")
 
 
-def test_limpar_antigas_apaga_so_o_que_passou_de_um_dia(pool):
+def test_ip_que_entrou_nos_ultimos_30_dias_escapa_do_limite_por_email(pool):
+    """Quem chuta a senha da conta de muitos IPs não tranca o dono para fora: o IP de onde a
+    conta entrou com sucesso nos últimos 30 dias não conta o limite por e-mail (o por IP, sim)."""
+    with pool.connection() as conn:
+        marcar_sucesso(conn, comecar(conn, EMAIL, "10.0.0.1"))
+        for i in range(20):
+            comecar(conn, EMAIL, f"10.0.1.{i}")
+
+        with pytest.raises(Bloqueado):
+            comecar(conn, EMAIL, "10.0.2.1")
+        for _ in range(5):
+            comecar(conn, EMAIL, "10.0.0.1")
+        with pytest.raises(Bloqueado):
+            comecar(conn, EMAIL, "10.0.0.1")  # o limite por IP continua valendo
+
+        conn.execute("DELETE FROM tentativas_de_login WHERE ip = '10.0.0.1' AND NOT sucesso")
+        conn.execute(
+            "UPDATE tentativas_de_login SET momento = now() - interval '31 days' WHERE sucesso"
+        )
+        with pytest.raises(Bloqueado):
+            comecar(conn, EMAIL, "10.0.0.1")  # sucesso velho não vale mais
+
+
+def test_limpar_antigas_apaga_falhas_de_mais_de_um_dia_e_sucessos_de_mais_de_30(pool):
     with pool.connection() as conn:
         _falhas(conn, 3, ha_minutos=25 * 60)
         _falhas(conn, 2, ha_minutos=23 * 60)
+        _tentativas(conn, 2, sucesso=True, ha_minutos=31 * 24 * 60)
+        _tentativas(conn, 1, sucesso=True, ha_minutos=29 * 24 * 60)
 
-        assert limpar_antigas(conn) == 3
-        restantes = conn.execute("SELECT count(*) AS n FROM tentativas_de_login").fetchone()
-        assert restantes["n"] == 2
+        assert limpar_antigas(conn) == 5
+        assert _contar_em(conn, "NOT sucesso") == 2
+        assert _contar_em(conn, "sucesso") == 1
 
 
 # --- rotas ------------------------------------------------------------------------------
@@ -238,6 +269,20 @@ async def test_sexta_tentativa_do_mesmo_ip_na_janela_da_429_com_retry_after(clie
     assert _contar(pool, "sessoes") == 0
     outro_ip = await _entrar(client, headers={"X-Ip-Do-Cliente": "198.51.100.1"})
     assert outro_ip.status_code == 200
+
+
+async def test_chute_de_muitos_ips_bloqueia_os_ips_mas_nao_o_dono(client, pool):
+    casa = {"X-Ip-Do-Cliente": "203.0.113.7"}
+    assert (await _entrar(client, headers=casa)).status_code == 200
+    with pool.connection() as conn:
+        for i in range(20):
+            _falhas(conn, 1, ip=f"198.51.100.{i}")
+
+    for ip in ("198.51.100.3", "192.0.2.1"):  # um dos que chutaram e um novo
+        resp = await _entrar(client, headers={"X-Ip-Do-Cliente": ip})
+        assert resp.status_code == 429, ip
+    assert (await _entrar(client, senha="chute", headers=casa)).status_code == 401
+    assert (await _entrar(client, headers=casa)).status_code == 200
 
 
 async def test_falhas_com_mais_de_15_minutos_nao_contam(client, pool):
