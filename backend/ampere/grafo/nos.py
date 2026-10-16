@@ -345,7 +345,11 @@ class NosDoGrafo:
     # --- 6. memória de longo prazo e resumo --------------------------------------------------
 
     def salvar_memoria(self, estado: EstadoDaConversa, runtime: Runtime) -> dict:
+        """Turno com dado sensível não vira fato nem preferência; turno barrado pelo
+        Guardrail de entrada também não vira preferência, porque a preferência entra no
+        prompt de sistema das próximas Conversas."""
         memorias = estado.get("memorias") or memorias_vazias()
+        sensivel = bool(estado.get("mensagem_sensivel"))
         salvar_memorias(
             runtime.store,
             self.deps.fabrica.trabalhador(),
@@ -354,7 +358,9 @@ class NosDoGrafo:
             desfecho=estado.get("desfecho") or "Resolvida",
             acoes=list(estado.get("acoes_tomadas", [])),
             fatos_conhecidos=memorias["semantica"],
-            guardar_fatos=not estado.get("mensagem_sensivel"),
+            guardar_fatos=not sensivel,
+            preferencias_atuais=_preferencias(memorias),
+            guardar_preferencias=not sensivel and not estado.get("bloqueio"),
         )
         return self._resumir_se_longa(estado)
 
@@ -396,12 +402,24 @@ class NosDoGrafo:
         return SystemMessage(
             prompt.renderizar(
                 memoria_procedural=memorias["procedural"] or "(nenhuma)",
+                preferencias_do_cliente=formatar_preferencias(_preferencias(memorias)),
                 memorias=formatar_memorias(memorias),
                 resumo_da_conversa=estado.get("resumo") or "(nenhum)",
                 critica=formatar_critica(estado),
                 **extras,
             )
         )
+
+
+def _preferencias(memorias: Memorias) -> list[str]:
+    # Um checkpoint gravado antes das preferências (uma Aprovação Pendente, por exemplo)
+    # chega aqui sem a chave na retomada.
+    return list(memorias.get("preferencias") or [])
+
+
+def formatar_preferencias(preferencias: list[str]) -> str:
+    """Uma linha por preferência; a normalização já garantiu que nenhuma quebra a linha."""
+    return "\n".join(f"- {preferencia}" for preferencia in preferencias) or "(nenhuma)"
 
 
 def formatar_memorias(memorias: Memorias) -> str:

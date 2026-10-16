@@ -145,6 +145,7 @@ def gerar_resposta(gerador: BaseChatModel, pergunta: str, chunks: Sequence[Chunk
     prompt = carregar_prompt("gerar_resposta")
     sistema = prompt.renderizar(
         memoria_procedural="(nenhuma)",
+        preferencias_do_cliente="(nenhuma)",
         memorias="(nada registrado)",
         resumo_da_conversa="(nenhum)",
         contexto=formatar_chunks(chunks),

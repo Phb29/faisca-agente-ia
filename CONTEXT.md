@@ -75,8 +75,8 @@ O resumo de uma Conversa passada de um Cliente, com o desfecho (Resolvida ou Esc
 _Avoid_: Log, histórico de atendimentos
 
 **Memória Procedural**:
-Instruções de como atender um Cliente específico, aplicadas ao comportamento do chatbot em toda Conversa futura.
-_Avoid_: Regras, preferências, configuração do cliente
+Como atender um Cliente específico, aplicado ao comportamento do chatbot em toda Conversa futura. Tem duas partes: as instruções do Atendente, texto livre que só ele escreve na Central, e as preferências do Cliente, o que o próprio Cliente pediu sobre a forma de falar (tom, idioma, formalidade, tamanho, formatação, como chamá-lo), gravadas sozinhas no fim do turno e que o Atendente vê e apaga. As preferências valem só para a forma e valem menos que as instruções do Atendente e que a política.
+_Avoid_: Regras, configuração do cliente
 
 ## Pessoas e aprovação
 

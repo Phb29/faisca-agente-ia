@@ -2,7 +2,7 @@
 
 from langgraph.store.base import BaseStore
 
-from ampere.memoria.procedural import ler_procedural
+from ampere.memoria.procedural import ler_preferencias, ler_procedural
 from ampere.memoria.store import namespace_episodica, namespace_semantica
 from ampere.memoria.tipos import Episodio, Memorias
 
@@ -16,7 +16,8 @@ def carregar_memorias(
     limite_episodica: int = 3,
 ) -> Memorias:
     """Semântica por similaridade com a mensagem, episódica da mais recente para a mais
-    antiga, e a procedural inteira."""
+    antiga, e a procedural inteira, com as instruções do Atendente e as preferências do
+    Cliente."""
     semantica = [
         item.value["texto"]
         for item in store.search(
@@ -38,4 +39,5 @@ def carregar_memorias(
         "semantica": semantica,
         "episodica": episodica,
         "procedural": ler_procedural(store, cliente_id),
+        "preferencias": ler_preferencias(store, cliente_id),
     }
