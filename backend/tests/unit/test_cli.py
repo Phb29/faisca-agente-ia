@@ -1,6 +1,12 @@
 """Os comandos dos evals gravam a execução completa no banco, a menos de `--sem-salvar` ou
-de uma rodada parcial (`--amostra`); `hash-senha` imprime um hash que confere com a senha."""
+de uma rodada parcial (`--amostra`); `hash-senha` imprime um hash que confere com a senha; e
+`api --host ::` escuta IPv6 e IPv4 na mesma porta."""
 
+import socket
+import sys
+import types
+
+import uvicorn
 from typer.testing import CliRunner
 
 from ampere import cli
@@ -9,6 +15,10 @@ from ampere.evals.relatorio import Relatorio
 from ampere.nucleo.config import Config
 
 RELATORIO = Relatorio(contexto={"n": 1}, resumo={"n": 1}, casos=[])
+
+
+async def _app_vazio(scope, receive, send) -> None:
+    pass
 
 
 def _capturar_salvos(monkeypatch) -> list:
@@ -110,3 +120,49 @@ def test_hash_senha_recusa_senha_vazia():
 
     assert resultado.exit_code != 0
     assert "scrypt:" not in resultado.output
+
+
+def _api_falsa(monkeypatch) -> None:
+    """Troca a montagem do sistema por um app vazio, sem carregar modelos nem abrir o banco."""
+    composicao = types.ModuleType("ampere.composicao")
+    composicao.montar_api = lambda cfg: _app_vazio
+    monkeypatch.setitem(sys.modules, "ampere.composicao", composicao)
+    monkeypatch.setattr(cli, "config", lambda: Config())
+    monkeypatch.setattr(cli, "_configurar_logs", lambda: None)
+
+
+def test_api_em_dois_pontos_escuta_ipv6_e_ipv4_no_mesmo_socket(monkeypatch):
+    """A rede interna do Railway é IPv6, e o healthcheck pode vir por IPv4. O asyncio abre `::`
+    só para IPv6, então o comando abre o socket ele mesmo, com IPV6_V6ONLY desligado."""
+    _api_falsa(monkeypatch)
+    servidos = []
+    monkeypatch.setattr(
+        uvicorn.Server, "run", lambda self, sockets=None: servidos.append((self.config, sockets))
+    )
+
+    resultado = CliRunner().invoke(cli.app, ["api", "--host", "::", "--port", "0"])
+
+    assert resultado.exit_code == 0, resultado.output
+    [(config, [sock])] = servidos
+    with sock:
+        assert (config.app, config.host) == (_app_vazio, "::")
+        assert sock.family == socket.AF_INET6
+        assert sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY) == 0
+        assert sock.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR) != 0
+        endereco, porta = sock.getsockname()[:2]
+        assert endereco == "::"
+        sock.listen()
+        for destino in ("127.0.0.1", "::1"):
+            with socket.create_connection((destino, porta), timeout=2):
+                sock.accept()[0].close()
+
+
+def test_api_em_outro_host_sobe_como_antes(monkeypatch):
+    _api_falsa(monkeypatch)
+    chamadas = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kwargs: chamadas.append((app, kwargs)))
+
+    resultado = CliRunner().invoke(cli.app, ["api"])
+
+    assert resultado.exit_code == 0, resultado.output
+    assert chamadas == [(_app_vazio, {"host": "0.0.0.0", "port": 8000})]

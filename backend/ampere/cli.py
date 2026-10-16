@@ -121,13 +121,33 @@ def hash_senha() -> None:
 
 @app.command()
 def api(host: str = "0.0.0.0", port: int = 8000) -> None:
-    """Sobe a API HTTP (FastAPI)."""
+    """Sobe a API HTTP (FastAPI). Com `--host ::`, escuta IPv6 e IPv4 na mesma porta: a rede
+    interna do Railway é IPv6, e o healthcheck pode chegar por IPv4."""
     import uvicorn
 
     from ampere.composicao import montar_api
 
     _configurar_logs()
-    uvicorn.run(montar_api(config()), host=host, port=port)
+    aplicacao = montar_api(config())
+    if host != "::":
+        uvicorn.run(aplicacao, host=host, port=port)
+        return
+    servidor = uvicorn.Server(uvicorn.Config(aplicacao, host=host, port=port))
+    sock = _socket_ipv6_e_ipv4(port)
+    logging.getLogger(__name__).info("api escutando em [::]:%d, IPv6 e IPv4", port)
+    servidor.run(sockets=[sock])
+
+
+def _socket_ipv6_e_ipv4(port: int):
+    """Um socket em `::` que aceita IPv6 e IPv4 (este chega como `::ffff:a.b.c.d`). Quando o
+    próprio uvicorn abre `::`, o asyncio liga o IPV6_V6ONLY, e o IPv4 fica de fora."""
+    import socket
+
+    sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+    sock.bind(("::", port))
+    return sock
 
 
 @app.command()

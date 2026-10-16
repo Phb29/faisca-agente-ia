@@ -20,4 +20,5 @@ RUN uv run python -c "from ampere.rag.indice import baixar_modelos; baixar_model
 
 ENV PATH="/app/.venv/bin:$PATH" PORT=8000
 EXPOSE 8000
-CMD ["sh", "-c", "ampere api --port ${PORT}"]
+# `::` escuta IPv6 (a rede interna do Railway) e IPv4 (o healthcheck) na mesma porta.
+CMD ["sh", "-c", "ampere api --host :: --port ${PORT}"]
