@@ -79,6 +79,7 @@ def test_extrator_de_memorias_recebe_preferencias_atuais_e_ultima_mensagem():
         "preferencias_atuais",
         "ultima_mensagem_do_cliente",
         "fatos_conhecidos",
+        "episodio_atual",
         "conversa",
     }
     assert "3. preferencias" in prompt.texto

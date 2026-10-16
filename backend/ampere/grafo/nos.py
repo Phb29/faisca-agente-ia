@@ -82,7 +82,14 @@ class NosDoGrafo:
     def carregar_memoria(self, estado: EstadoDaConversa, runtime: Runtime) -> dict:
         mensagem = texto_da_ultima_do_cliente(estado["messages"])
         return dict(
-            inicio_do_turno(carregar_memorias(runtime.store, estado["cliente_id"], mensagem))
+            inicio_do_turno(
+                carregar_memorias(
+                    runtime.store,
+                    estado["cliente_id"],
+                    mensagem,
+                    conversa_atual=estado.get("conversa_id") or None,
+                )
+            )
         )
 
     # --- 2. Guardrail de entrada ----------------------------------------------------------
@@ -361,6 +368,7 @@ class NosDoGrafo:
             guardar_fatos=not sensivel,
             preferencias_atuais=_preferencias(memorias),
             guardar_preferencias=not sensivel and not estado.get("bloqueio"),
+            conversa_id=estado.get("conversa_id") or None,
         )
         return self._resumir_se_longa(estado)
 

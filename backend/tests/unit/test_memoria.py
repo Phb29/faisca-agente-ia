@@ -108,6 +108,74 @@ def test_episodios_vem_do_mais_recente_para_o_mais_antigo_e_respeitam_limite():
     assert resumos == ["episodio 3", "episodio 2", "episodio 1"]
 
 
+def test_mesma_conversa_reescreve_o_mesmo_episodio():
+    store = criar_store_em_memoria(embed_falso)
+    for resumo in ("Perguntou sobre frete", "Perguntou sobre frete e pediu a troca"):
+        trabalhador = ModeloFalso([MemoriasExtraidas(fatos=[], episodio=resumo)])
+        salvar_memorias(
+            store,
+            trabalhador,
+            "cli_ana",
+            CONVERSA,
+            desfecho="Resolvida",
+            acoes=[],
+            conversa_id="conversa-1",
+        )
+
+    episodios = store.search(namespace_episodica("cli_ana"))
+
+    assert [(e.key, e.value["resumo"]) for e in episodios] == [
+        ("conversa-1", "Perguntou sobre frete e pediu a troca")
+    ]
+
+
+def test_episodio_anterior_da_conversa_entra_no_prompt():
+    store = criar_store_em_memoria(embed_falso)
+    primeiro = ModeloFalso([MemoriasExtraidas(fatos=[], episodio="Perguntou sobre frete")])
+    salvar_memorias(
+        store,
+        primeiro,
+        "cli_ana",
+        CONVERSA,
+        desfecho="Resolvida",
+        acoes=[],
+        conversa_id="conversa-1",
+    )
+    segundo = ModeloFalso([extraidas()])
+
+    salvar_memorias(
+        store,
+        segundo,
+        "cli_ana",
+        CONVERSA,
+        desfecho="Resolvida",
+        acoes=[],
+        conversa_id="conversa-1",
+    )
+
+    assert "(nenhum)" in primeiro.chamadas[0][0].content
+    assert "Perguntou sobre frete" in segundo.chamadas[0][0].content
+
+
+def test_episodio_da_conversa_atual_fica_fora_da_carga():
+    store = criar_store_em_memoria(embed_falso)
+    for conversa, resumo in (("conversa-1", "Trocou o fone"), ("conversa-2", "Pergunta de agora")):
+        trabalhador = ModeloFalso([MemoriasExtraidas(fatos=[], episodio=resumo)])
+        salvar_memorias(
+            store,
+            trabalhador,
+            "cli_ana",
+            CONVERSA,
+            desfecho="Resolvida",
+            acoes=[],
+            conversa_id=conversa,
+        )
+
+    memorias = carregar_memorias(store, "cli_ana", "x", conversa_atual="conversa-2")
+
+    assert [e["resumo"] for e in memorias["episodica"]] == ["Trocou o fone"]
+
+
 def test_procedural_roundtrip():
     store = criar_store_em_memoria(embed_falso)
 

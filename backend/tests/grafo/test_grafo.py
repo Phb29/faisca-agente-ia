@@ -13,7 +13,7 @@ from ampere.guardrails.saida import RESPOSTA_ESCALADA
 from ampere.loja.pedidos import Reembolso
 from ampere.memoria.procedural import escrever_preferencias, escrever_procedural, ler_preferencias
 from ampere.memoria.salvar import MemoriasExtraidas
-from ampere.memoria.store import namespace_semantica
+from ampere.memoria.store import namespace_episodica, namespace_semantica
 from ampere.nucleo.config import Config
 from ampere.nucleo.falsos import JevFalso
 from tests.apoio import MEMORIAS, Cenario, tool_call, ultima_resposta
@@ -224,6 +224,17 @@ def test_salvar_memoria_grava_fato_e_episodio_por_turno():
     assert memorias["semantica"] == ["Tem um notebook Vega 15"]
     assert memorias["episodica"][0]["resumo"] == "Perguntou sobre garantia"
     assert memorias["episodica"][0]["desfecho"] == "Resolvida"
+
+
+def test_dois_turnos_na_mesma_conversa_deixam_um_episodio_so():
+    cenario = Cenario(trabalhador=[MEMORIAS, MEMORIAS])
+
+    cenario.turno("tenho um notebook Vega 15, qual a garantia?")
+    estado = cenario.turno("e o frete?")
+
+    episodios = cenario.store.search(namespace_episodica("cli_ana"))
+    assert [e.key for e in episodios] == ["conversa-1"]
+    assert estado["memorias"]["episodica"] == []
 
 
 def test_memoria_procedural_entra_no_prompt_do_gerador():

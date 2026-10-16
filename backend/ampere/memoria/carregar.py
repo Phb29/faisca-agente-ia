@@ -14,6 +14,7 @@ def carregar_memorias(
     *,
     limite_semantica: int = 5,
     limite_episodica: int = 3,
+    conversa_atual: str | None = None,
 ) -> Memorias:
     """Semântica por similaridade com a mensagem, episódica da mais recente para a mais
     antiga, e a procedural inteira, com as instruções do Atendente e as preferências do
@@ -24,7 +25,12 @@ def carregar_memorias(
             namespace_semantica(cliente_id), query=mensagem, limit=limite_semantica
         )
     ]
-    episodios = store.search(namespace_episodica(cliente_id), limit=1000)
+    # o episódio da Conversa atual fica de fora: ela já está inteira nas mensagens
+    episodios = [
+        item
+        for item in store.search(namespace_episodica(cliente_id), limit=1000)
+        if item.key != conversa_atual
+    ]
     episodios.sort(key=lambda item: item.value.get("data", ""), reverse=True)
     episodica: list[Episodio] = [
         {

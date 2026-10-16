@@ -1,5 +1,10 @@
 """Ao fim de cada turno, o trabalhador extrai fatos, um episódio e, quando o Cliente pediu,
-as preferências dele sobre a forma de falar. Tudo é gravado no Store do Cliente."""
+as preferências dele sobre a forma de falar. Tudo é gravado no Store do Cliente.
+
+O episódio é um por Conversa: a chave é o id da Conversa, e cada turno reescreve o mesmo
+registro partindo do episódio anterior. Assim uma mensagem que chega horas depois atualiza o
+resumo daquela Conversa em vez de criar um segundo, e o resumo não perde o começo quando as
+mensagens antigas já foram compactadas."""
 
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -38,12 +43,16 @@ def salvar_memorias(
     guardar_fatos: bool = True,
     preferencias_atuais: list[str] | None = None,
     guardar_preferencias: bool = False,
+    conversa_id: str | None = None,
 ) -> MemoriasExtraidas:
     """Grava o episódio sempre, os fatos só com `guardar_fatos` (turno sem dado sensível) e
     as preferências só com `guardar_preferencias` (turno sem bloqueio e sem dado sensível).
     Na dúvida, não grava: por isso `guardar_preferencias` começa falso."""
+    episodica = namespace_episodica(cliente_id)
+    anterior = store.get(episodica, conversa_id) if conversa_id else None
     prompt = carregar_prompt("extrair_memorias")
     sistema = prompt.renderizar(
+        episodio_atual=str(anterior.value.get("resumo", "")) if anterior else "(nenhum)",
         preferencias_atuais=_em_lista(preferencias_atuais, "(nenhuma)"),
         ultima_mensagem_do_cliente=texto_da_ultima_do_cliente(messages) or "(nenhuma)",
         fatos_conhecidos=_em_lista(fatos_conhecidos, "(nenhum)"),
@@ -60,8 +69,8 @@ def salvar_memorias(
     if guardar_preferencias and extraidas.preferencias is not None:
         escrever_preferencias(store, cliente_id, extraidas.preferencias)
     store.put(
-        namespace_episodica(cliente_id),
-        str(uuid4()),
+        episodica,
+        conversa_id or str(uuid4()),
         {
             "resumo": extraidas.episodio,
             "desfecho": desfecho,
