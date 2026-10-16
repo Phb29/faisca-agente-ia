@@ -22,3 +22,6 @@ fastembed_cache/
 .vscode/
 # Brainstorm visual
 .superpowers/
+# Revisão do deck: imagens geradas pelo revisar.py, refeitas a qualquer hora
+docs/workshop/fonte/qa/
+docs/workshop/fonte/qa_estudo/
