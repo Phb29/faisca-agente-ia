@@ -27,9 +27,9 @@ class Config(BaseSettings):
     # Modelos (ver docs/adr/0002 e 0008): cada papel tem um provedor e um modelo
     modelos_falsos: bool = False
     provedor_gerador: Provedor = "openai"
-    modelo_gerador: str = "gpt-5.6-terra"
+    modelo_gerador: str = "gpt-6-luna"
     provedor_juiz: Provedor = "openai"
-    modelo_juiz: str = "gpt-5.6-sol"
+    modelo_juiz: str = "gpt-6.1-sol"
     provedor_trabalhador: Provedor = "groq"
     modelo_trabalhador: str = "openai/gpt-oss-120b"
 
