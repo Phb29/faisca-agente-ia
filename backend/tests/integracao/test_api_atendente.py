@@ -10,7 +10,10 @@ from ampere.acoes.aprovacoes import criar_aprovacao
 from ampere.acoes.ticket import ResumoDoTicket, StoreDeTicketsPostgres
 from ampere.api.app import criar_app
 from ampere.conversas.conversas import criar_conversa, gravar_mensagem
+from ampere.memoria.procedural import MemoriaProcedural
+from ampere.memoria.store import criar_store_em_memoria
 from ampere.nucleo.config import Config
+from ampere.nucleo.falsos import embed_falso
 
 pytestmark = pytest.mark.integracao
 
@@ -20,12 +23,19 @@ CLIENTE = {"X-Cliente-Id": "c1"}
 class MemoriaEmDicionario:
     def __init__(self):
         self.textos: dict[str, str] = {}
+        self.preferencias: dict[str, list[str]] = {}
 
     def ler(self, cliente_id: str) -> str:
         return self.textos.get(cliente_id, "")
 
     def escrever(self, cliente_id: str, texto: str) -> None:
         self.textos[cliente_id] = texto
+
+    def ler_preferencias(self, cliente_id: str) -> list[str]:
+        return self.preferencias.get(cliente_id, [])
+
+    def escrever_preferencias(self, cliente_id: str, itens: list[str]) -> None:
+        self.preferencias[cliente_id] = list(itens)
 
 
 @pytest.fixture
@@ -165,21 +175,84 @@ async def test_tickets_e_conversa_do_ticket(client, pool):
     assert resp.status_code == 404
 
 
-async def test_memoria_procedural_roundtrip(client, memoria):
-    vazio = await client.get("/atendente/clientes/c1/memoria-procedural")
-    assert vazio.status_code == 200
-    assert vazio.json() == {"texto": ""}
+ROTA_DA_MEMORIA = "/atendente/clientes/c1/memoria-procedural"
 
-    escrito = await client.put(
-        "/atendente/clientes/c1/memoria-procedural",
-        json={"texto": "Sempre tratar por 'senhor'."},
-    )
+
+async def test_memoria_procedural_roundtrip(client, memoria):
+    vazio = await client.get(ROTA_DA_MEMORIA)
+    assert vazio.status_code == 200
+    assert vazio.json() == {"texto": "", "preferencias": []}
+
+    escrito = await client.put(ROTA_DA_MEMORIA, json={"texto": "Sempre tratar por 'senhor'."})
     assert escrito.status_code == 200
-    assert escrito.json() == {"texto": "Sempre tratar por 'senhor'."}
+    assert escrito.json() == {"texto": "Sempre tratar por 'senhor'.", "preferencias": []}
     assert memoria.textos["c1"] == "Sempre tratar por 'senhor'."
 
-    lido = await client.get("/atendente/clientes/c1/memoria-procedural")
-    assert lido.json() == {"texto": "Sempre tratar por 'senhor'."}
+    lido = await client.get(ROTA_DA_MEMORIA)
+    assert lido.json() == {"texto": "Sempre tratar por 'senhor'.", "preferencias": []}
+
+
+async def test_get_traz_as_preferencias_pedidas_pelo_cliente(client, memoria):
+    memoria.escrever("c1", "Não oferecer cupom.")
+    memoria.escrever_preferencias("c1", ["Responder em maiúsculas", "Chamar de Aninha"])
+
+    lido = await client.get(ROTA_DA_MEMORIA)
+
+    assert lido.json() == {
+        "texto": "Não oferecer cupom.",
+        "preferencias": ["Responder em maiúsculas", "Chamar de Aninha"],
+    }
+
+
+async def test_put_sem_preferencias_nao_mexe_nelas(client, memoria):
+    memoria.escrever_preferencias("c1", ["Responder em maiúsculas"])
+
+    escrito = await client.put(ROTA_DA_MEMORIA, json={"texto": "Tom formal."})
+
+    assert escrito.json() == {"texto": "Tom formal.", "preferencias": ["Responder em maiúsculas"]}
+    assert memoria.preferencias["c1"] == ["Responder em maiúsculas"]
+
+
+async def test_put_com_preferencias_substitui_a_lista_e_o_atendente_apaga(client, memoria):
+    memoria.escrever_preferencias("c1", ["Responder em maiúsculas", "Chamar de Aninha"])
+
+    uma = await client.put(
+        ROTA_DA_MEMORIA, json={"texto": "", "preferencias": ["Chamar de Aninha"]}
+    )
+    assert uma.json() == {"texto": "", "preferencias": ["Chamar de Aninha"]}
+
+    todas = await client.put(ROTA_DA_MEMORIA, json={"texto": "", "preferencias": []})
+    assert todas.json() == {"texto": "", "preferencias": []}
+    assert memoria.preferencias["c1"] == []
+
+
+async def test_put_recusa_preferencias_acima_dos_limites(client, memoria):
+    seis = [f"Preferência {i}" for i in range(6)]
+    longa = ["x" * 121]
+
+    for preferencias in (seis, longa):
+        resp = await client.put(ROTA_DA_MEMORIA, json={"texto": "", "preferencias": preferencias})
+        assert resp.status_code == 422
+    assert "c1" not in memoria.preferencias
+
+
+async def test_put_com_a_memoria_de_verdade_normaliza_as_preferencias(banco, pool, sessao):
+    real = MemoriaProcedural(criar_store_em_memoria(embed_falso))
+    real.escrever_preferencias("c1", ["Responder em maiúsculas"])
+    app = _app(banco, pool, memoria_procedural=real)
+
+    async with httpx.AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test", headers=sessao
+    ) as c:
+        resp = await c.put(
+            ROTA_DA_MEMORIA,
+            json={
+                "texto": " Tom formal. ",
+                "preferencias": ["  Chamar de Aninha ", "chamar de ANINHA"],
+            },
+        )
+
+    assert resp.json() == {"texto": "Tom formal.", "preferencias": ["Chamar de Aninha"]}
 
 
 async def test_memoria_procedural_sem_implementacao_devolve_503(banco, pool, sessao):
