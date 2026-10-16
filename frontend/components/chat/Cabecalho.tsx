@@ -5,6 +5,7 @@ import type { StatusDaConversa } from "@/lib/api";
 import type { Tom } from "@/lib/rotulos";
 import { statusDaConversa } from "@/lib/rotulos";
 import type { Conexao } from "@/lib/sse";
+import { BotaoSair } from "@/components/acesso/BotaoSair";
 import { BotaoDeIcone } from "@/components/ui/Botao";
 import { PilulaDe, Ponto } from "@/components/ui/Pilula";
 
@@ -45,6 +46,9 @@ export function Cabecalho({ titulo, status, conexao, painelAberto, aoAbrirMenu, 
         aria-expanded={painelAberto}
         onClick={aoAlternarPainel}
       />
+      {/* Sair encerra o login; trocar de Cliente (na barra de Conversas) só volta à escolha. */}
+      <span aria-hidden className="mx-0.5 h-5 w-px bg-line" />
+      <BotaoSair />
     </header>
   );
 }

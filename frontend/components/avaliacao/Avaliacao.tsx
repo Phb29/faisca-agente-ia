@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Headset, LogOut, MessageSquare } from "lucide-react";
+import { Headset, MessageSquare } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ErroDaApi, lerAmostraEmAndamento, mensagemDeErro, type NomeDoEval } from "@/lib/api";
+import { lerAmostraEmAndamento, mensagemDeErro, sessaoRecusada, type NomeDoEval } from "@/lib/api";
 import { ABAS, abaValida, TEXTOS } from "@/lib/avaliacao";
 import { useRecurso } from "@/hooks/useRecurso";
-import { Botao, estiloDeBotao } from "@/components/ui/Botao";
+import { BotaoSair } from "@/components/acesso/BotaoSair";
+import { estiloDeBotao } from "@/components/ui/Botao";
 import { Logotipo } from "@/components/ui/Marca";
 import { NotificacaoFlutuante, type Notificacao } from "@/components/ui/Notificacao";
 import { Ponto } from "@/components/ui/Pilula";
@@ -16,13 +17,7 @@ import { PainelDoEval } from "./PainelDoEval";
 
 const SONDAGEM_MS = 5000;
 
-type Props = {
-  token: string;
-  /** Sai da avaliação; com motivo, ele aparece na tela de login. */
-  aoSair: (motivo?: string) => void;
-};
-
-export function Avaliacao({ token, aoSair }: Props) {
+export function Avaliacao() {
   const router = useRouter();
   const aba = abaValida(useSearchParams().get("aba"));
   const [notificacao, setNotificacao] = useState<Notificacao | null>(null);
@@ -34,27 +29,15 @@ export function Avaliacao({ token, aoSair }: Props) {
   }, []);
   const fecharNotificacao = useCallback(() => setNotificacao(null), []);
 
-  const tokenRecusado = useCallback(
-    (erro: unknown) => {
-      if (erro instanceof ErroDaApi && erro.status === 401) {
-        aoSair("O token foi recusado pela API. Entre de novo.");
-        return true;
-      }
-      return false;
-    },
-    [aoSair],
-  );
+  // A sessão recusada (401) já leva à tela de entrada pelo `requisitar`: não vira notificação.
   const aoFalhar = useCallback(
     (erro: unknown) => {
-      if (!tokenRecusado(erro)) notificar("perigo", mensagemDeErro(erro));
+      if (!sessaoRecusada(erro)) notificar("perigo", mensagemDeErro(erro));
     },
-    [tokenRecusado, notificar],
+    [notificar],
   );
 
-  const amostra = useRecurso(`amostra:${token}`, () => lerAmostraEmAndamento(token), {
-    intervaloMs: SONDAGEM_MS,
-    aoErro: (erro) => void tokenRecusado(erro),
-  });
+  const amostra = useRecurso("amostra", lerAmostraEmAndamento, { intervaloMs: SONDAGEM_MS });
 
   const trocarAba = useCallback(
     (nova: NomeDoEval) => router.replace(`/avaliacao?aba=${nova}`, { scroll: false }),
@@ -110,9 +93,7 @@ export function Avaliacao({ token, aoSair }: Props) {
                 <MessageSquare aria-hidden className="size-4" strokeWidth={1.8} />
                 <span className="hidden md:inline">Abrir o chat</span>
               </Link>
-              <Botao variante="fantasma" tamanho="sm" icone={LogOut} aria-label="Sair" onClick={() => aoSair()}>
-                <span className="hidden sm:inline">Sair</span>
-              </Botao>
+              <BotaoSair />
             </div>
           </div>
         </div>
@@ -122,7 +103,6 @@ export function Avaliacao({ token, aoSair }: Props) {
         <PainelDoEval
           key={aba}
           nome={aba}
-          token={token}
           // Com a sondagem falhando, o último valor fica velho: melhor não mostrar o botão
           // "rodando" de um eval que pode já ter terminado.
           amostraGlobal={amostra.erro ? null : amostra.dados}

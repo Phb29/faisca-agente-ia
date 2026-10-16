@@ -1,8 +1,9 @@
-// Stream SSE lido com fetch, para mandar o token do Atendente no cabeçalho: o EventSource
-// não manda cabeçalho, e token na URL acabaria nos logs. Reconecta sozinho, com espera
-// crescente, enquanto quem ouve não disser que acabou; ao reconectar, a API manda de novo a
-// foto da execução, então nada se perde.
+// Stream SSE lido com fetch. Diferente do EventSource, ele vê o status da resposta: o 401
+// leva à tela de entrada e o 404 encerra de vez. Reconecta sozinho, com espera crescente,
+// enquanto quem ouve não disser que acabou; ao reconectar, a API manda de novo a foto da
+// execução, então nada se perde. A sessão vai no cookie, pelo BFF.
 
+import { irParaEntrada } from "./acesso";
 import { ErroDaApi } from "./api";
 import type { Conexao as EstadoDaConexao } from "./sse";
 
@@ -12,7 +13,6 @@ export type { EstadoDaConexao };
 
 type Opcoes = {
   url: string;
-  cabecalhos: Record<string, string>;
   /** Devolve true quando o stream acabou de vez: não reconecta mais. */
   aoEvento: (evento: EventoBruto) => boolean;
   aoMudarConexao: (estado: EstadoDaConexao) => void;
@@ -28,9 +28,8 @@ const SILENCIO_MAXIMO_MS = 45_000;
 const esperar = (ms: number) => new Promise((resolver) => setTimeout(resolver, ms));
 
 /** Abre o stream e devolve a função que o fecha. */
-export function abrirStreamComToken({
+export function abrirStreamSse({
   url,
-  cabecalhos,
   aoEvento,
   aoMudarConexao,
   aoFalhar,
@@ -66,14 +65,16 @@ export function abrirStreamComToken({
       const relogioDeConexao = setTimeout(() => controle?.abort(), SILENCIO_MAXIMO_MS);
       try {
         const resposta = await fetch(url, {
-          headers: { Accept: "text/event-stream", ...cabecalhos },
+          headers: { Accept: "text/event-stream" },
           signal: controle.signal,
           cache: "no-store",
         });
         clearTimeout(relogioDeConexao);
         if (resposta.status === 401 || resposta.status === 404) {
           encerrado = true;
-          const mensagem = resposta.status === 401 ? "Token recusado." : "Amostra não encontrada.";
+          void resposta.body?.cancel();
+          if (resposta.status === 401) irParaEntrada();
+          const mensagem = resposta.status === 401 ? "Sessão inválida ou expirada." : "Amostra não encontrada.";
           falhar(new ErroDaApi(resposta.status, mensagem));
           break;
         }

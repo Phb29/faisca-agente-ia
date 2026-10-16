@@ -16,13 +16,12 @@ const EXEMPLOS = [
 ];
 
 type Props = {
-  token: string;
   aoSalvar: (mensagem: string) => void;
   aoErro: (erro: unknown) => void;
 };
 
 /** Instruções livres por Cliente que o chatbot recebe no system prompt de toda Conversa. */
-export function EditorDeMemoria({ token, aoSalvar, aoErro }: Props) {
+export function EditorDeMemoria({ aoSalvar, aoErro }: Props) {
   const idDoCliente = useId();
   const idDoTexto = useId();
   const clientes = useRecurso("clientes", listarClientes, { aoErro });
@@ -31,7 +30,7 @@ export function EditorDeMemoria({ token, aoSalvar, aoErro }: Props) {
 
   const memoria = useRecurso(
     clienteId ? `memoria:${clienteId}` : null,
-    () => lerMemoriaProcedural(token, clienteId ?? ""),
+    () => lerMemoriaProcedural(clienteId ?? ""),
     { aoErro },
   );
   // Rascunho por Cliente: trocar de Cliente não perde o que foi escrito no outro.
@@ -63,7 +62,7 @@ export function EditorDeMemoria({ token, aoSalvar, aoErro }: Props) {
     if (!clienteId) return;
     setSalvando(true);
     try {
-      await salvarMemoriaProcedural(token, clienteId, texto);
+      await salvarMemoriaProcedural(clienteId, texto);
       await memoria.recarregar();
       descartar();
       setSalvoAgora(clienteId);

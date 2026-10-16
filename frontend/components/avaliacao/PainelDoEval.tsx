@@ -18,7 +18,6 @@ import { Numeros } from "./Numeros";
 
 type Props = {
   nome: NomeDoEval;
-  token: string;
   /** A amostra em andamento, de qualquer eval, vinda da sondagem da casca. */
   amostraGlobal: Execucao | null;
   recarregarAmostraGlobal: () => Promise<void>;
@@ -27,8 +26,8 @@ type Props = {
 };
 
 /** Uma aba inteira: cabeçalho, faixa ao vivo, a execução escolhida e a gaveta de detalhe. */
-export function PainelDoEval({ nome, token, amostraGlobal, recarregarAmostraGlobal, aoIrPara, aoFalhar }: Props) {
-  const execucoes = useRecurso(`execucoes:${nome}:${token}`, () => listarExecucoes(token, nome), {
+export function PainelDoEval({ nome, amostraGlobal, recarregarAmostraGlobal, aoIrPara, aoFalhar }: Props) {
+  const execucoes = useRecurso(`execucoes:${nome}`, () => listarExecucoes(nome), {
     aoErro: aoFalhar,
   });
   const [escolhida, setEscolhida] = useState<string | null>(null);
@@ -37,13 +36,13 @@ export function PainelDoEval({ nome, token, amostraGlobal, recarregarAmostraGlob
   const selecionadaId = escolhida ?? padrao;
   const execucao = useRecurso(
     selecionadaId ? `execucao:${selecionadaId}` : null,
-    () => lerExecucao(token, selecionadaId ?? ""),
+    () => lerExecucao(selecionadaId ?? ""),
     { aoErro: aoFalhar },
   );
   const [casoAberto, setCasoAberto] = useState<Caso | null>(null);
 
   const recarregarExecucoes = execucoes.recarregar;
-  const aoVivo = useAmostraAoVivo(token, nome, {
+  const aoVivo = useAmostraAoVivo(nome, {
     aoTerminar: () => {
       void recarregarExecucoes();
       void recarregarAmostraGlobal();

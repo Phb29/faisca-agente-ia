@@ -1,7 +1,11 @@
 // Cliente HTTP fino da API do Suporte Ampère e os tipos do contrato.
 // Nenhuma lógica de domínio: cada função chama uma rota e devolve o que a API respondeu.
+// Tudo passa pelo BFF do próprio frontend (`/api`, mesma origem): o cookie da sessão vai
+// sozinho, e o BFF o troca pelo token que a api espera. Qualquer 401 leva a /entrar.
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { irParaEntrada } from "./acesso";
+
+const BASE = "/api";
 
 // ---------- Vocabulário do contrato ----------
 
@@ -116,6 +120,9 @@ export class ErroDaApi extends Error {
   }
 }
 
+/** A api recusou a sessão: quem chamou não precisa mostrar erro, a tela de entrada já vem. */
+export const sessaoRecusada = (erro: unknown): boolean => erro instanceof ErroDaApi && erro.status === 401;
+
 export function mensagemDeErro(erro: unknown): string {
   if (erro instanceof ErroDaApi) return erro.message;
   if (erro instanceof TypeError) return "Não foi possível falar com a API. Ela está no ar?";
@@ -125,7 +132,7 @@ export function mensagemDeErro(erro: unknown): string {
 type Opcoes = { metodo?: "GET" | "POST" | "PUT"; cabecalhos?: Record<string, string>; corpo?: unknown };
 
 async function requisitar<T>(caminho: string, { metodo = "GET", cabecalhos, corpo }: Opcoes = {}): Promise<T> {
-  const resposta = await fetch(`${API_URL}${caminho}`, {
+  const resposta = await fetch(`${BASE}${caminho}`, {
     method: metodo,
     headers: {
       Accept: "application/json",
@@ -137,6 +144,7 @@ async function requisitar<T>(caminho: string, { metodo = "GET", cabecalhos, corp
   });
 
   if (!resposta.ok) {
+    if (resposta.status === 401) irParaEntrada();
     let detalhe = resposta.statusText;
     let corpo: unknown = null;
     try {
@@ -153,8 +161,14 @@ async function requisitar<T>(caminho: string, { metodo = "GET", cabecalhos, corp
 }
 
 const doCliente = (clienteId: string) => ({ "X-Cliente-Id": clienteId });
-export const doAtendente = (token: string) => ({ "X-Atendente-Token": token });
 const segmento = encodeURIComponent;
+
+// ---------- Sessão ----------
+
+export type Sessao = { email: string; expira_em: string };
+
+/** Confere a sessão; um 401 aqui leva a /entrar, como em qualquer outra rota. */
+export const lerSessao = () => requisitar<Sessao>("/acesso/eu");
 
 // ---------- Rotas do Cliente ----------
 
@@ -186,46 +200,34 @@ export const enviarMensagem = (
   });
 
 export const urlDoStream = (clienteId: string, conversaId: string) =>
-  `${API_URL}/conversas/${segmento(conversaId)}/stream?cliente_id=${segmento(clienteId)}`;
+  `${BASE}/conversas/${segmento(conversaId)}/stream?cliente_id=${segmento(clienteId)}`;
 
 // ---------- Rotas do Atendente ----------
 
-export const listarAprovacoes = (token: string) =>
-  requisitar<Aprovacao[]>("/atendente/aprovacoes", { cabecalhos: doAtendente(token) });
+export const listarAprovacoes = () => requisitar<Aprovacao[]>("/atendente/aprovacoes");
 
-export const aprovarReembolso = (token: string, aprovacaoId: string) =>
-  requisitar<Decisao>(`/atendente/aprovacoes/${segmento(aprovacaoId)}/aprovar`, {
-    metodo: "POST",
-    cabecalhos: doAtendente(token),
-  });
+export const aprovarReembolso = (aprovacaoId: string) =>
+  requisitar<Decisao>(`/atendente/aprovacoes/${segmento(aprovacaoId)}/aprovar`, { metodo: "POST" });
 
-export const rejeitarReembolso = (token: string, aprovacaoId: string, motivo?: string) =>
+export const rejeitarReembolso = (aprovacaoId: string, motivo?: string) =>
   requisitar<Decisao>(`/atendente/aprovacoes/${segmento(aprovacaoId)}/rejeitar`, {
     metodo: "POST",
-    cabecalhos: doAtendente(token),
     corpo: motivo ? { motivo } : {},
   });
 
-export const listarTickets = (token: string) =>
-  requisitar<Ticket[]>("/atendente/tickets", { cabecalhos: doAtendente(token) });
+export const listarTickets = () => requisitar<Ticket[]>("/atendente/tickets");
 
-export const lerConversaDoTicket = (token: string, ticketId: string) =>
-  requisitar<ConversaDoTicket>(`/atendente/tickets/${segmento(ticketId)}/conversa`, {
-    cabecalhos: doAtendente(token),
-  });
+export const lerConversaDoTicket = (ticketId: string) =>
+  requisitar<ConversaDoTicket>(`/atendente/tickets/${segmento(ticketId)}/conversa`);
 
 const rotaDaMemoria = (clienteId: string) =>
   `/atendente/clientes/${segmento(clienteId)}/memoria-procedural`;
 
-export const lerMemoriaProcedural = (token: string, clienteId: string) =>
-  requisitar<MemoriaProcedural>(rotaDaMemoria(clienteId), { cabecalhos: doAtendente(token) });
+export const lerMemoriaProcedural = (clienteId: string) =>
+  requisitar<MemoriaProcedural>(rotaDaMemoria(clienteId));
 
-export const salvarMemoriaProcedural = (token: string, clienteId: string, texto: string) =>
-  requisitar<MemoriaProcedural>(rotaDaMemoria(clienteId), {
-    metodo: "PUT",
-    cabecalhos: doAtendente(token),
-    corpo: { texto },
-  });
+export const salvarMemoriaProcedural = (clienteId: string, texto: string) =>
+  requisitar<MemoriaProcedural>(rotaDaMemoria(clienteId), { metodo: "PUT", corpo: { texto } });
 
 // ---------- Avaliação ----------
 
@@ -356,24 +358,16 @@ export type AmostraDisparada = { execucao_id: string };
 export type AmostraOcupada = { detail: string; execucao_id: string | null; eval: NomeDoEval | null };
 
 /** Até 100: cada amostra entra na lista, e a completa não pode sumir no meio da aula. */
-export const listarExecucoes = (token: string, nome: NomeDoEval) =>
-  requisitar<Execucao[]>(`/avaliacao/${nome}/execucoes?limite=100`, {
-    cabecalhos: doAtendente(token),
-  });
+export const listarExecucoes = (nome: NomeDoEval) =>
+  requisitar<Execucao[]>(`/avaliacao/${nome}/execucoes?limite=100`);
 
-export const lerExecucao = (token: string, execucaoId: string) =>
-  requisitar<Execucao>(`/avaliacao/execucoes/${segmento(execucaoId)}`, {
-    cabecalhos: doAtendente(token),
-  });
+export const lerExecucao = (execucaoId: string) =>
+  requisitar<Execucao>(`/avaliacao/execucoes/${segmento(execucaoId)}`);
 
-export const lerAmostraEmAndamento = (token: string) =>
-  requisitar<Execucao | null>("/avaliacao/amostra", { cabecalhos: doAtendente(token) });
+export const lerAmostraEmAndamento = () => requisitar<Execucao | null>("/avaliacao/amostra");
 
-export const rodarAmostra = (token: string, nome: NomeDoEval) =>
-  requisitar<AmostraDisparada>(`/avaliacao/${nome}/amostra`, {
-    metodo: "POST",
-    cabecalhos: doAtendente(token),
-  });
+export const rodarAmostra = (nome: NomeDoEval) =>
+  requisitar<AmostraDisparada>(`/avaliacao/${nome}/amostra`, { metodo: "POST" });
 
 export const urlDoStreamDaExecucao = (execucaoId: string) =>
-  `${API_URL}/avaliacao/execucoes/${segmento(execucaoId)}/stream`;
+  `${BASE}/avaliacao/execucoes/${segmento(execucaoId)}/stream`;

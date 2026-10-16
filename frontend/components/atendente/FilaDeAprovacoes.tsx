@@ -15,13 +15,12 @@ import { Esqueleto, Vazio } from "@/components/ui/Vazio";
 const LIMIAR_VISUAL = 0.5;
 
 type Props = {
-  token: string;
   aprovacoes: Aprovacao[] | null;
   aoDecidir: (mensagem: string) => void;
   aoErro: (erro: unknown) => void;
 };
 
-export function FilaDeAprovacoes({ token, aprovacoes, aoDecidir, aoErro }: Props) {
+export function FilaDeAprovacoes({ aprovacoes, aoDecidir, aoErro }: Props) {
   return (
     <section aria-labelledby="titulo-aprovacoes">
       <CabecalhoDeSecao
@@ -47,7 +46,6 @@ export function FilaDeAprovacoes({ token, aprovacoes, aoDecidir, aoErro }: Props
           {aprovacoes.map((aprovacao) => (
             <CartaoDeAprovacao
               key={aprovacao.id}
-              token={token}
               aprovacao={aprovacao}
               aoDecidir={aoDecidir}
               aoErro={aoErro}
@@ -60,13 +58,12 @@ export function FilaDeAprovacoes({ token, aprovacoes, aoDecidir, aoErro }: Props
 }
 
 type PropsDoCartao = {
-  token: string;
   aprovacao: Aprovacao;
   aoDecidir: (mensagem: string) => void;
   aoErro: (erro: unknown) => void;
 };
 
-function CartaoDeAprovacao({ token, aprovacao, aoDecidir, aoErro }: PropsDoCartao) {
+function CartaoDeAprovacao({ aprovacao, aoDecidir, aoErro }: PropsDoCartao) {
   const idDoMotivo = useId();
   const [rejeitando, setRejeitando] = useState(false);
   const [motivo, setMotivo] = useState("");
@@ -76,10 +73,10 @@ function CartaoDeAprovacao({ token, aprovacao, aoDecidir, aoErro }: PropsDoCarta
     setOcupado(decisao);
     try {
       if (decisao === "aprovar") {
-        await aprovarReembolso(token, aprovacao.id);
+        await aprovarReembolso(aprovacao.id);
         aoDecidir(`Reembolso do Pedido ${aprovacao.pedido_id} aprovado. A Conversa foi retomada.`);
       } else {
-        await rejeitarReembolso(token, aprovacao.id, motivo.trim() || undefined);
+        await rejeitarReembolso(aprovacao.id, motivo.trim() || undefined);
         aoDecidir(`Reembolso do Pedido ${aprovacao.pedido_id} rejeitado. O Cliente recebe o motivo na Conversa.`);
       }
     } catch (erro) {

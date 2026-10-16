@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  doAtendente,
   ErroDaApi,
   lerExecucao,
   rodarAmostra,
@@ -14,7 +13,7 @@ import {
   type Sorteado,
   type StatusDaExecucao,
 } from "@/lib/api";
-import { abrirStreamComToken, type EstadoDaConexao, type EventoBruto } from "@/lib/streamComToken";
+import { abrirStreamSse, type EstadoDaConexao, type EventoBruto } from "@/lib/streamSse";
 
 export type EstadoDoCartao = "aguardando" | "rodando" | "pronto";
 export type Cartao = Sorteado & { estado: EstadoDoCartao; fases: string[]; caso: Caso | null };
@@ -121,7 +120,7 @@ type Opcoes = {
  * A faixa ao vivo desenha o `estado`; `dispensar` fecha a faixa de uma amostra terminada e
  * impede que a sondagem a reabra.
  */
-export function useAmostraAoVivo(token: string, nome: NomeDoEval, opcoes: Opcoes) {
+export function useAmostraAoVivo(nome: NomeDoEval, opcoes: Opcoes) {
   const [estado, setEstado] = useState<AoVivo | null>(null);
   const [disparando, setDisparando] = useState(false);
   const fecharStream = useRef<(() => void) | null>(null);
@@ -166,9 +165,8 @@ export function useAmostraAoVivo(token: string, nome: NomeDoEval, opcoes: Opcoes
         conexao: "conectando",
         iniciadaEm: null,
       });
-      fecharStream.current = abrirStreamComToken({
+      fecharStream.current = abrirStreamSse({
         url: urlDoStreamDaExecucao(execucaoId),
-        cabecalhos: doAtendente(token),
         aoMudarConexao: (conexao) => daExecucao(execucaoId, (atual) => ({ ...atual, conexao })),
         aoFalhar: (erro) => {
           daExecucao(execucaoId, (atual) => ({ ...atual, status: "erro", erro: erro.message }));
@@ -177,7 +175,7 @@ export function useAmostraAoVivo(token: string, nome: NomeDoEval, opcoes: Opcoes
         aoEvento: (evento) => {
           daExecucao(execucaoId, (atual) => aplicarEvento(atual, evento));
           if (evento.tipo === "eval_caso" && (evento.dados as { grande?: boolean }).grande) {
-            lerExecucao(token, execucaoId).then(
+            lerExecucao(execucaoId).then(
               (execucao) =>
                 daExecucao(execucaoId, (atual) =>
                   aplicarEvento(atual, { tipo: "eval_estado", dados: execucao }),
@@ -191,7 +189,7 @@ export function useAmostraAoVivo(token: string, nome: NomeDoEval, opcoes: Opcoes
         },
       });
     },
-    [token, daExecucao],
+    [daExecucao],
   );
 
   const disparar = useCallback(async () => {
@@ -201,7 +199,7 @@ export function useAmostraAoVivo(token: string, nome: NomeDoEval, opcoes: Opcoes
       // releitura, e repetir o POST já deve passar.
       for (let tentativa = 0; tentativa < 2; tentativa++) {
         try {
-          const { execucao_id } = await rodarAmostra(token, nome);
+          const { execucao_id } = await rodarAmostra(nome);
           conectar(execucao_id);
           return;
         } catch (erro) {
@@ -222,7 +220,7 @@ export function useAmostraAoVivo(token: string, nome: NomeDoEval, opcoes: Opcoes
     } finally {
       setDisparando(false);
     }
-  }, [token, nome, conectar]);
+  }, [nome, conectar]);
 
   const dispensar = useCallback(() => {
     if (estado) dispensadas.current.add(estado.execucaoId);

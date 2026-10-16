@@ -1,8 +1,10 @@
 // Stream SSE de uma Conversa. O EventSource não envia headers, então o Cliente vai na
-// query string. A reconexão é nativa do navegador; ao reconectar, o servidor reenvia a
-// última resposta gravada como `message_done` com `reenvio: true`.
+// query string; a sessão vai no cookie, que o BFF troca pelo token. A reconexão é nativa
+// do navegador; ao reconectar, o servidor reenvia a última resposta gravada como
+// `message_done` com `reenvio: true`.
 
 import {
+  lerSessao,
   urlDoStream,
   type Desfecho,
   type MotivoDoGate,
@@ -82,7 +84,11 @@ export function conectarStream(
       aoEvento({ tipo: "error", dados });
       return;
     }
-    aoMudarConexao(fonte.readyState === EventSource.CLOSED ? "fechada" : "reconectando");
+    const desistiu = fonte.readyState === EventSource.CLOSED;
+    aoMudarConexao(desistiu ? "fechada" : "reconectando");
+    // O navegador desiste quando a resposta não é 200, mas não diz o status. Se foi a sessão
+    // vencida, a conferência dá 401 e o `requisitar` leva à tela de entrada.
+    if (desistiu) lerSessao().catch(() => undefined);
   });
 
   return () => fonte.close();

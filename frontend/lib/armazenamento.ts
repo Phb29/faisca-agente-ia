@@ -3,7 +3,6 @@
 
 export const CHAVES = {
   cliente: "ampere.cliente",
-  tokenDoAtendente: "ampere.atendente.token",
   painelAberto: "ampere.chat.painel",
 } as const;
 

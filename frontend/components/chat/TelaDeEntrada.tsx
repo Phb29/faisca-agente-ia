@@ -15,7 +15,8 @@ export type ClienteEscolhido = { id: string; nome: string; novo?: boolean };
 
 type Props = { aoEscolher: (cliente: ClienteEscolhido) => void };
 
-/** Primeira tela: quem é o Cliente desta sessão (não há login de verdade, de propósito). */
+/** Primeira tela do chat, depois do login: quem é o Cliente desta sessão. O Cliente é de
+ * exemplo e não tem login próprio, de propósito; o login é da equipe que usa o app. */
 export function TelaDeEntrada({ aoEscolher }: Props) {
   const clientes = useRecurso("clientes", listarClientes);
 

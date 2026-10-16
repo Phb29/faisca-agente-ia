@@ -19,12 +19,11 @@ import { Esqueleto, Vazio } from "@/components/ui/Vazio";
 type Filtro = "todos" | Prioridade;
 
 type Props = {
-  token: string;
   tickets: Ticket[] | null;
   aoErro: (erro: unknown) => void;
 };
 
-export function Tickets({ token, tickets, aoErro }: Props) {
+export function Tickets({ tickets, aoErro }: Props) {
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [abertoId, setAbertoId] = useState<string | null>(null);
   const visiveis = (tickets ?? []).filter((t) => filtro === "todos" || t.prioridade === filtro);
@@ -88,7 +87,7 @@ export function Tickets({ token, tickets, aoErro }: Props) {
         )}
       </div>
 
-      <ConversaDoTicketNaGaveta token={token} ticketId={abertoId} aoFechar={() => setAbertoId(null)} aoErro={aoErro} />
+      <ConversaDoTicketNaGaveta ticketId={abertoId} aoFechar={() => setAbertoId(null)} aoErro={aoErro} />
     </section>
   );
 }
@@ -144,16 +143,15 @@ function LinhaDoTicket({ ticket, aoAbrir }: { ticket: Ticket; aoAbrir: () => voi
 }
 
 type PropsDaGaveta = {
-  token: string;
   ticketId: string | null;
   aoFechar: () => void;
   aoErro: (erro: unknown) => void;
 };
 
-function ConversaDoTicketNaGaveta({ token, ticketId, aoFechar, aoErro }: PropsDaGaveta) {
+function ConversaDoTicketNaGaveta({ ticketId, aoFechar, aoErro }: PropsDaGaveta) {
   const conversa = useRecurso<ConversaDoTicket>(
     ticketId ? `ticket:${ticketId}` : null,
-    () => lerConversaDoTicket(token, ticketId ?? ""),
+    () => lerConversaDoTicket(ticketId ?? ""),
     { aoErro },
   );
 

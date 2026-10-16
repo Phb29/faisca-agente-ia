@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Headset, LogOut, MessageSquare, Plus } from "lucide-react";
+import { ArrowLeftRight, Headset, MessageSquare, Plus } from "lucide-react";
 import type { Conversa } from "@/lib/api";
 import { cx } from "@/lib/cx";
 import { formatarRelativo, periodoDe, type Periodo } from "@/lib/formatos";
@@ -89,7 +89,7 @@ export function BarraLateral({ cliente, conversas, ativaId, aoSelecionar, aoNova
             <p className="truncate text-[13px] font-medium">{cliente.nome}</p>
             <p className="truncate font-mono text-[10.5px] text-muted">{cliente.id}</p>
           </div>
-          <BotaoDeIcone icone={LogOut} rotulo="Trocar de Cliente" tamanho="sm" onClick={aoSair} />
+          <BotaoDeIcone icone={ArrowLeftRight} rotulo="Trocar de Cliente" tamanho="sm" onClick={aoSair} />
         </div>
       </div>
     </nav>

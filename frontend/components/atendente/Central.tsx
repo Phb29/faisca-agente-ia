@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Activity, LogOut, MessageSquare } from "lucide-react";
+import { Activity, MessageSquare } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
-import { ErroDaApi, listarAprovacoes, listarTickets, mensagemDeErro } from "@/lib/api";
+import { listarAprovacoes, listarTickets, mensagemDeErro, sessaoRecusada } from "@/lib/api";
 import { formatarHoje } from "@/lib/formatos";
 import { useRecurso } from "@/hooks/useRecurso";
+import { BotaoSair } from "@/components/acesso/BotaoSair";
 import { Aviso } from "@/components/ui/Aviso";
-import { Botao, estiloDeBotao } from "@/components/ui/Botao";
+import { estiloDeBotao } from "@/components/ui/Botao";
 import { Logotipo } from "@/components/ui/Marca";
 import { NotificacaoFlutuante, type Notificacao } from "@/components/ui/Notificacao";
 import { Ponto } from "@/components/ui/Pilula";
@@ -18,13 +19,7 @@ import { Tickets } from "./Tickets";
 
 const SONDAGEM_MS = 5000;
 
-type Props = {
-  token: string;
-  /** Sai da Central; com motivo, ele aparece na tela de login. */
-  aoSair: (motivo?: string) => void;
-};
-
-export function Central({ token, aoSair }: Props) {
+export function Central() {
   const [notificacao, setNotificacao] = useState<Notificacao | null>(null);
   const sequencia = useRef(0);
 
@@ -34,34 +29,17 @@ export function Central({ token, aoSair }: Props) {
   }, []);
   const fecharNotificacao = useCallback(() => setNotificacao(null), []);
 
-  const tokenRecusado = useCallback(
-    (erro: unknown) => {
-      if (erro instanceof ErroDaApi && erro.status === 401) {
-        aoSair("O token foi recusado pela API. Entre de novo.");
-        return true;
-      }
-      return false;
-    },
-    [aoSair],
-  );
-
-  // Falhas da sondagem ficam visíveis na faixa de aviso; só o 401 tira da Central.
-  const aoFalharSondagem = useCallback((erro: unknown) => void tokenRecusado(erro), [tokenRecusado]);
+  // Falhas da sondagem ficam visíveis na faixa de aviso. A sessão recusada (401) já leva à
+  // tela de entrada pelo `requisitar`, então não vira notificação.
   const aoFalharAcao = useCallback(
     (erro: unknown) => {
-      if (!tokenRecusado(erro)) notificar("perigo", mensagemDeErro(erro));
+      if (!sessaoRecusada(erro)) notificar("perigo", mensagemDeErro(erro));
     },
-    [tokenRecusado, notificar],
+    [notificar],
   );
 
-  const aprovacoes = useRecurso(`aprovacoes:${token}`, () => listarAprovacoes(token), {
-    intervaloMs: SONDAGEM_MS,
-    aoErro: aoFalharSondagem,
-  });
-  const tickets = useRecurso(`tickets:${token}`, () => listarTickets(token), {
-    intervaloMs: SONDAGEM_MS,
-    aoErro: aoFalharSondagem,
-  });
+  const aprovacoes = useRecurso("aprovacoes", listarAprovacoes, { intervaloMs: SONDAGEM_MS });
+  const tickets = useRecurso("tickets", listarTickets, { intervaloMs: SONDAGEM_MS });
 
   const recarregarAprovacoes = aprovacoes.recarregar;
   const aoDecidir = useCallback(
@@ -94,9 +72,7 @@ export function Central({ token, aoSair }: Props) {
               <MessageSquare aria-hidden className="size-4" strokeWidth={1.8} />
               <span className="hidden sm:inline">Abrir o chat</span>
             </Link>
-            <Botao variante="fantasma" tamanho="sm" icone={LogOut} onClick={() => aoSair()}>
-              Sair
-            </Botao>
+            <BotaoSair />
           </div>
         </div>
       </header>
@@ -119,15 +95,11 @@ export function Central({ token, aoSair }: Props) {
 
         <div className="mt-10 grid gap-10 xl:grid-cols-[minmax(0,1fr)_380px]">
           <div className="min-w-0 animate-surgir space-y-12 [animation-delay:120ms]">
-            <FilaDeAprovacoes token={token} aprovacoes={aprovacoes.dados} aoDecidir={aoDecidir} aoErro={aoFalharAcao} />
-            <Tickets token={token} tickets={tickets.dados} aoErro={aoFalharAcao} />
+            <FilaDeAprovacoes aprovacoes={aprovacoes.dados} aoDecidir={aoDecidir} aoErro={aoFalharAcao} />
+            <Tickets tickets={tickets.dados} aoErro={aoFalharAcao} />
           </div>
           <aside className="animate-surgir [animation-delay:180ms] xl:sticky xl:top-20 xl:self-start">
-            <EditorDeMemoria
-              token={token}
-              aoSalvar={(mensagem) => notificar("sucesso", mensagem)}
-              aoErro={aoFalharAcao}
-            />
+            <EditorDeMemoria aoSalvar={(mensagem) => notificar("sucesso", mensagem)} aoErro={aoFalharAcao} />
           </aside>
         </div>
       </main>
