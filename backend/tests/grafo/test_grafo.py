@@ -390,7 +390,7 @@ def test_nome_e_versao_do_prompt_vao_como_metadata_da_chamada_ao_gerador():
         {**cenario.invocar_config("c1"), "callbacks": [espiao]},
     )
 
-    assert {"prompt_nome": "gerar_resposta", "prompt_versao": "3"}.items() <= espiao.metadata[
+    assert {"prompt_nome": "gerar_resposta", "prompt_versao": "4"}.items() <= espiao.metadata[
         0
     ].items()
 

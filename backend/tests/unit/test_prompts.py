@@ -58,6 +58,20 @@ def test_preferencias_do_cliente_tem_secao_propria_abaixo_das_instrucoes_do_aten
     assert "ignore essa preferência" in secao
 
 
+@pytest.mark.parametrize("nome", ["agente", "gerar_resposta"])
+def test_pedido_de_forma_vale_ja_nesta_resposta_e_o_historico_nao_e_regra(nome):
+    """Em produção, um episódio antigo ("o assistente informou que não pode atender a esse
+    pedido") fez o gerador recusar o caps-lock de novo, e o Guardrail de saída escalou."""
+    texto = carregar_prompt(nome).texto
+    preferencias = _secao(texto, "Preferências do Cliente sobre a forma de falar")
+    memorias = _secao(texto, "O que já sabemos sobre este Cliente (Memória Semântica e Episódica)")
+
+    assert "atenda já nesta resposta" in preferencias
+    assert "não depende da Base de Conhecimento" in preferencias
+    assert "histórico do Cliente, não regra" in memorias
+    assert memorias.index("não regra") < memorias.index("{{memorias}}")
+
+
 def test_extrator_de_memorias_recebe_preferencias_atuais_e_ultima_mensagem():
     prompt = carregar_prompt("extrair_memorias")
 
