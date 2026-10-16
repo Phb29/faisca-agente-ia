@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight, Play, RefreshCw } from "lucide-react";
+import type { ReactNode } from "react";
 import type { Execucao, NomeDoEval } from "@/lib/api";
 import { descreverExecucao, fraseDaAba, TAMANHO_DA_AMOSTRA, TEXTOS } from "@/lib/avaliacao";
 import { terminada } from "@/hooks/useAmostraAoVivo";
@@ -30,13 +31,7 @@ export function CabecalhoDaAba(props: Props) {
 
   return (
     <div className="flex animate-surgir flex-wrap items-end gap-x-8 gap-y-5 pt-10 pb-8">
-      <div className="max-w-3xl min-w-0 flex-1">
-        <p className="sobretitulo">{textos.sobretitulo}</p>
-        <h1 className="mt-2 font-display text-[clamp(32px,3.6vw,48px)] leading-[1.04] font-semibold tracking-[-0.035em]">
-          {textos.pergunta}
-        </h1>
-        <p className="mt-3 text-[15px] leading-relaxed text-ink-2">{fraseDaAba(nome, mostrada)}</p>
-      </div>
+      <TituloDaAba sobretitulo={textos.sobretitulo} pergunta={textos.pergunta} frase={fraseDaAba(nome, mostrada)} />
       <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
         {opcoes.length > 0 && (
           <label>
@@ -57,6 +52,19 @@ export function CabecalhoDaAba(props: Props) {
         )}
         <BotaoAoVivo {...props} />
       </div>
+    </div>
+  );
+}
+
+/** A pergunta grande de uma aba, com o rótulo em cima e a frase do que ela mede embaixo. */
+export function TituloDaAba({ sobretitulo, pergunta, frase }: { sobretitulo: string; pergunta: string; frase: ReactNode }) {
+  return (
+    <div className="max-w-3xl min-w-0 flex-1">
+      <p className="sobretitulo">{sobretitulo}</p>
+      <h1 className="mt-2 font-display text-[clamp(32px,3.6vw,48px)] leading-[1.04] font-semibold tracking-[-0.035em]">
+        {pergunta}
+      </h1>
+      <p className="mt-3 text-[15px] leading-relaxed text-ink-2">{frase}</p>
     </div>
   );
 }

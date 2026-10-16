@@ -45,7 +45,7 @@ export function Segmentos<T extends string>({ opcoes, valor, aoMudar, rotulo, cl
             onClick={() => aoMudar(opcao.valor)}
             onKeyDown={(evento) => aoTeclar(evento, indice)}
             className={cx(
-              "inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded-[9px] px-3 text-[12.5px] font-medium transition-all",
+              "inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded-[9px] px-3 text-[12.5px] font-medium whitespace-nowrap transition-all",
               ativa ? "bg-surface text-ink shadow-suave" : "text-muted hover:text-ink",
             )}
           >

@@ -92,6 +92,17 @@ async def test_eval_invalido_e_execucao_inexistente_sao_404(client):
         assert stream.status_code == 404, execucao_id
 
 
+async def test_dados_devolvem_o_golden_de_cada_eval(client):
+    for nome in ("rag", "agente", "juiz"):
+        resp = await client.get(f"/avaliacao/{nome}/dados")
+
+        assert resp.status_code == 200, nome
+        dados = resp.json()
+        assert dados["eval"] == nome
+        assert dados["n"] == len(dados["linhas"]) > 0
+    assert (await client.get("/avaliacao/nada/dados")).status_code == 404
+
+
 async def test_amostra_cria_execucao_e_job_juntos(client, banco):
     resp = await client.post("/avaliacao/juiz/amostra")
 

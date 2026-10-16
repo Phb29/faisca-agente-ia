@@ -58,7 +58,7 @@ export function Etiqueta({ children }: { children: ReactNode }) {
   );
 }
 
-function Bloco({ titulo, children }: { titulo: string; children: ReactNode }) {
+export function Bloco({ titulo, children }: { titulo: string; children: ReactNode }) {
   return (
     <section>
       <h3 className="sobretitulo mb-2">{titulo}</h3>
@@ -67,7 +67,7 @@ function Bloco({ titulo, children }: { titulo: string; children: ReactNode }) {
   );
 }
 
-function Balao({ children }: { children: ReactNode }) {
+export function Balao({ children }: { children: ReactNode }) {
   return (
     <p className="rounded-xl bg-canvas px-3.5 py-3 text-[13.5px] leading-relaxed whitespace-pre-line text-ink-2">
       {children}

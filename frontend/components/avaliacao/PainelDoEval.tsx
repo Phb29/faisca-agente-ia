@@ -128,7 +128,7 @@ export function PainelDoEval({ nome, amostraGlobal, recarregarAmostraGlobal, aoI
   );
 }
 
-function ErroDeCarga({
+export function ErroDeCarga({
   mensagem,
   erro,
   aoRecarregar,

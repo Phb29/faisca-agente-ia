@@ -1,6 +1,7 @@
 """Rotas da Tela de Avaliação, protegidas pela sessão de login, como a Central: as execuções
 de cada eval, a amostra em andamento, o disparo de uma amostra ao vivo (um job `eval` na
-mesma fila do chat) e o stream dela (ver docs/adr/0009).
+mesma fila do chat), o stream dela (ver docs/adr/0009) e o golden de cada eval, para a aba
+Dados.
 
 As rotas de leitura liberam antes as amostras abandonadas, para a tela nunca mostrar uma
 rodada morta como em andamento.
@@ -17,6 +18,7 @@ from sse_starlette import EventSourceResponse, ServerSentEvent
 from starlette.concurrency import run_in_threadpool
 
 from ampere.api.dependencias import Conexao, Configuracao, Pool, exigir_sessao, uuid_ou_404
+from ampere.evals.conjuntos import conjunto_de_dados
 from ampere.evals.execucoes import (
     EVALS,
     amostra_em_andamento,
@@ -102,6 +104,12 @@ def listar_execucoes(eval: str, conn: Conexao, limite: int = Query(20, ge=1, le=
     _eval_ou_404(eval)
     liberar_abandonadas(conn)
     return listar(conn, eval, limite=limite)
+
+
+@router.get("/{eval}/dados")
+def dados(eval: str):
+    """O golden do eval, lido do CSV que o eval usa: total, contagem por grupo e as linhas."""
+    return conjunto_de_dados(_eval_ou_404(eval))
 
 
 @router.post("/{eval}/amostra", status_code=202)

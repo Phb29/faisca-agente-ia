@@ -373,5 +373,52 @@ export const lerAmostraEmAndamento = () => requisitar<Execucao | null>("/avaliac
 export const rodarAmostra = (nome: NomeDoEval) =>
   requisitar<AmostraDisparada>(`/avaliacao/${nome}/amostra`, { metodo: "POST" });
 
+/** Uma linha de um golden, como o CSV a guarda. `id` e `grupo` são os mesmos dos casos. */
+export type LinhaDaBusca = {
+  id: string;
+  grupo: string;
+  pergunta: string;
+  documento_esperado: string;
+  resposta_referencia: string;
+};
+
+export type LinhaDoAgente = {
+  id: string;
+  grupo: string;
+  mensagem: string;
+  cliente_id: string;
+  pedido_id: string | null;
+  memorias: string;
+  /** null quando o Guardrail de entrada deve barrar antes do Roteador. */
+  intencao_esperada: string | null;
+  acao_esperada: string;
+  desfecho_esperado: string;
+  guardrail_bloqueia: boolean;
+};
+
+export type ConjuntoDoJuiz = "treino" | "dev" | "teste";
+
+export type LinhaDoJuiz = {
+  id: string;
+  grupo: string;
+  conjunto: ConjuntoDoJuiz;
+  mensagem: string;
+  resposta: string;
+  aprovada: boolean;
+  critica: string;
+};
+
+type BaseDosDados = { arquivo: string; n: number; grupos: Record<string, number> };
+
+/** O golden de um eval, lido do mesmo CSV que o eval usa. */
+export type DadosDoEval =
+  | (BaseDosDados & { eval: "rag"; linhas: LinhaDaBusca[] })
+  | (BaseDosDados & { eval: "agente"; linhas: LinhaDoAgente[] })
+  | (BaseDosDados & { eval: "juiz"; conjuntos: Record<ConjuntoDoJuiz, number>; linhas: LinhaDoJuiz[] });
+
+export type LinhaDosDados = LinhaDaBusca | LinhaDoAgente | LinhaDoJuiz;
+
+export const lerDados = (nome: NomeDoEval) => requisitar<DadosDoEval>(`/avaliacao/${nome}/dados`);
+
 export const urlDoStreamDaExecucao = (execucaoId: string) =>
   `${BASE}/avaliacao/execucoes/${segmento(execucaoId)}/stream`;

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-from ampere.evals import agente, calibracao, rag
+from ampere.evals import agente, calibracao, conjuntos, rag
 from ampere.evals.juiz import (
     Exemplo,
     Veredito,
@@ -433,6 +433,66 @@ def test_rotulos_humanos_carregam_balanceados():
     assert len(rotulos) >= 40
     aprovadas = sum(r.aprovada for r in rotulos)
     assert abs(aprovadas - (len(rotulos) - aprovadas)) <= 6
+
+
+# --- os CSVs como a aba Dados da Tela de Avaliação os mostra ---------------------------------
+
+
+@pytest.mark.parametrize("nome", ["rag", "agente", "juiz"])
+def test_conjunto_de_dados_conta_por_grupo_e_tem_ids_unicos(nome):
+    dados = conjuntos.conjunto_de_dados(nome)
+
+    assert dados["eval"] == nome
+    assert dados["arquivo"].endswith(".csv")
+    assert dados["n"] == len(dados["linhas"]) > 0
+    assert sum(dados["grupos"].values()) == dados["n"]
+    assert len({linha["id"] for linha in dados["linhas"]}) == dados["n"]
+
+
+def test_conjunto_da_busca_usa_os_ids_e_grupos_das_execucoes():
+    golden = rag.carregar_golden_rag()
+    dados = conjuntos.conjunto_de_dados("rag")
+
+    primeira = dados["linhas"][0]
+    assert primeira["id"] == rag.id_da_pergunta(0)
+    assert primeira["grupo"] == golden[0].origem
+    assert primeira["pergunta"] == golden[0].pergunta
+    assert primeira["documento_esperado"] == golden[0].documento_esperado
+    assert set(dados["grupos"]) == {"manual", "adversarial"}
+
+
+def test_conjunto_do_agente_agrupa_como_a_amostra():
+    cenarios = agente.carregar_golden_agente()
+    dados = conjuntos.conjunto_de_dados("agente")
+
+    for cenario, linha in zip(cenarios, dados["linhas"], strict=True):
+        assert linha["id"] == cenario.id
+        assert linha["grupo"] == agente.grupo_do_cenario(cenario)
+        assert linha["desfecho_esperado"] == cenario.desfecho_esperado
+    bloqueados = [linha for linha in dados["linhas"] if linha["guardrail_bloqueia"]]
+    assert bloqueados and all(linha["grupo"] == "bloqueio" for linha in bloqueados)
+
+
+def test_conjunto_do_juiz_marca_treino_dev_e_teste_da_mesma_divisao():
+    rotulos = calibracao.carregar_rotulos()
+    divisao = calibracao.dividir(rotulos, seed=calibracao.SEED_DA_AMOSTRA)
+    dados = conjuntos.conjunto_de_dados("juiz")
+
+    por_id = {linha["id"]: linha for linha in dados["linhas"]}
+    for nome_do_conjunto in ("treino", "dev", "teste"):
+        for r in getattr(divisao, nome_do_conjunto):
+            assert por_id[calibracao.id_do_rotulo(r)]["conjunto"] == nome_do_conjunto
+    assert dados["conjuntos"] == {
+        "treino": len(divisao.treino),
+        "dev": len(divisao.dev),
+        "teste": len(divisao.teste),
+    }
+    assert {linha["grupo"] for linha in dados["linhas"]} == {"aprovada", "reprovada"}
+
+
+def test_conjunto_de_eval_desconhecido_e_erro():
+    with pytest.raises(ValueError):
+        conjuntos.conjunto_de_dados("outro")
 
 
 # --- um cenário de ponta a ponta (a borda entre o eval e o grafo) ----------------------------

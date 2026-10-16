@@ -4,7 +4,10 @@
 import type { CasoBase, Execucao, NomeDoEval } from "./api";
 import { formatarMomento } from "./formatos";
 
-export const ABAS: NomeDoEval[] = ["rag", "agente", "juiz"];
+export const EVALS: NomeDoEval[] = ["rag", "agente", "juiz"];
+/** As abas da tela: um painel por eval e, por último, os goldens dos três. */
+export type Aba = NomeDoEval | "dados";
+export const ABAS: Aba[] = [...EVALS, "dados"];
 export const TAMANHO_DA_AMOSTRA = 3;
 
 type Textos = {
@@ -69,8 +72,63 @@ export function fraseDaAba(nome: NomeDoEval, execucao: Execucao | null): string 
   return `${n} respostas rotuladas por humano. ${tamanhos.treino} viram exemplos do prompt, ${tamanhos.dev} medem o juiz e ${tamanhos.teste} recebem a correção.`;
 }
 
-export function abaValida(valor: string | null): NomeDoEval {
+export function abaValida(valor: string | null): Aba {
   return ABAS.find((aba) => aba === valor) ?? "rag";
+}
+
+export const rotuloDaAba = (aba: Aba): string => (aba === "dados" ? "Dados" : TEXTOS[aba].rotulo);
+
+export function evalValido(valor: string | null): NomeDoEval {
+  return EVALS.find((nome) => nome === valor) ?? "rag";
+}
+
+type TextosDosDados = { arquivo: string; titulo: string; descricao: string; todos: string };
+
+/** O quadro de cada golden na aba Dados: o título da tabela e uma frase do que o gabarito guarda. */
+export const TEXTOS_DOS_DADOS: Record<NomeDoEval, TextosDosDados> = {
+  rag: {
+    arquivo: "golden_rag.csv",
+    titulo: "Perguntas da busca",
+    todos: "Todas",
+    descricao:
+      "Cada pergunta aponta para o documento que tem a resposta, nunca para um trecho: o trecho muda quando o chunker muda.",
+  },
+  agente: {
+    arquivo: "golden_agente.csv",
+    titulo: "Cenários do agente",
+    todos: "Todos",
+    descricao: "Um turno por cenário. O código confere a intenção, a Ação e o desfecho esperados.",
+  },
+  juiz: {
+    arquivo: "rotulos_humanos.csv",
+    titulo: "Respostas rotuladas",
+    todos: "Todas",
+    descricao:
+      "Um humano aprovou ou reprovou cada resposta. O treino vira exemplo no prompt do juiz, o dev mede o juiz e o teste recebe a correção.",
+  },
+};
+
+const PLURAIS: Record<string, [string, string]> = {
+  manual: ["manual", "manuais"],
+  adversarial: ["adversarial", "adversariais"],
+  duvida: ["dúvida", "dúvidas"],
+  transacao: ["transação", "transações"],
+  quer_humano: ["pede um Atendente", "pedem um Atendente"],
+  bloqueio: ["bloqueio", "bloqueios"],
+  aprovada: ["aprovada", "aprovadas"],
+  reprovada: ["reprovada", "reprovadas"],
+};
+
+/** "34 manuais", "1 bloqueio": a contagem de um grupo, no singular ou no plural. */
+export function contagemDoGrupo(grupo: string, quantidade: number): string {
+  const [um, varios] = PLURAIS[grupo] ?? [grupo, grupo];
+  return `${quantidade} ${quantidade === 1 ? um : varios}`;
+}
+
+/** "Manuais", "Pedem um Atendente": o nome de um grupo num filtro. */
+export function grupoNoPlural(grupo: string): string {
+  const varios = PLURAIS[grupo]?.[1] ?? grupo;
+  return varios.charAt(0).toUpperCase() + varios.slice(1);
 }
 
 export const temErro = (caso: CasoBase): boolean => Boolean(caso.erro);

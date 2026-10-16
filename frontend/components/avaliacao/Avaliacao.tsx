@@ -4,8 +4,8 @@ import Link from "next/link";
 import { Headset, MessageSquare } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { lerAmostraEmAndamento, mensagemDeErro, sessaoRecusada, type NomeDoEval } from "@/lib/api";
-import { ABAS, abaValida, TEXTOS } from "@/lib/avaliacao";
+import { lerAmostraEmAndamento, mensagemDeErro, sessaoRecusada } from "@/lib/api";
+import { ABAS, abaValida, rotuloDaAba, type Aba } from "@/lib/avaliacao";
 import { useRecurso } from "@/hooks/useRecurso";
 import { BotaoSair } from "@/components/acesso/BotaoSair";
 import { estiloDeBotao } from "@/components/ui/Botao";
@@ -13,6 +13,7 @@ import { Logotipo } from "@/components/ui/Marca";
 import { NotificacaoFlutuante, type Notificacao } from "@/components/ui/Notificacao";
 import { Ponto } from "@/components/ui/Pilula";
 import { Segmentos } from "@/components/ui/Segmentos";
+import { PainelDeDados } from "./PainelDeDados";
 import { PainelDoEval } from "./PainelDoEval";
 
 const SONDAGEM_MS = 5000;
@@ -40,11 +41,11 @@ export function Avaliacao() {
   const amostra = useRecurso("amostra", lerAmostraEmAndamento, { intervaloMs: SONDAGEM_MS });
 
   const trocarAba = useCallback(
-    (nova: NomeDoEval) => router.replace(`/avaliacao?aba=${nova}`, { scroll: false }),
+    (nova: Aba) => router.replace(`/avaliacao?aba=${nova}`, { scroll: false }),
     [router],
   );
 
-  // 1, 2 e 3 trocam de aba, para o apresentador não precisar mirar o mouse no telão.
+  // 1 a 4 trocam de aba, para o apresentador não precisar mirar o mouse no telão.
   useEffect(() => {
     const aoTeclar = (evento: KeyboardEvent) => {
       if (evento.metaKey || evento.ctrlKey || evento.altKey) return;
@@ -52,7 +53,7 @@ export function Avaliacao() {
       if (alvo && (alvo.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(alvo.tagName))) return;
       // Com a gaveta de detalhe aberta, o foco costuma estar no body: não trocar de aba atrás dela.
       if (document.querySelector('[aria-modal="true"]')) return;
-      const indice = ["1", "2", "3"].indexOf(evento.key);
+      const indice = ["1", "2", "3", "4"].indexOf(evento.key);
       if (indice >= 0) trocarAba(ABAS[indice]);
     };
     document.addEventListener("keydown", aoTeclar);
@@ -74,7 +75,7 @@ export function Avaliacao() {
               rotulo: (
                 <>
                   <span className="font-mono text-[10px] opacity-60">{indice + 1}</span>
-                  {TEXTOS[nome].rotulo}
+                  {rotuloDaAba(nome)}
                 </>
               ),
             }))}
@@ -100,16 +101,20 @@ export function Avaliacao() {
       </header>
 
       <main className="mx-auto max-w-[1320px] px-5 pb-20 2xl:max-w-[1600px]">
-        <PainelDoEval
-          key={aba}
-          nome={aba}
-          // Com a sondagem falhando, o último valor fica velho: melhor não mostrar o botão
-          // "rodando" de um eval que pode já ter terminado.
-          amostraGlobal={amostra.erro ? null : amostra.dados}
-          recarregarAmostraGlobal={amostra.recarregar}
-          aoIrPara={trocarAba}
-          aoFalhar={aoFalhar}
-        />
+        {aba === "dados" ? (
+          <PainelDeDados aoFalhar={aoFalhar} />
+        ) : (
+          <PainelDoEval
+            key={aba}
+            nome={aba}
+            // Com a sondagem falhando, o último valor fica velho: melhor não mostrar o botão
+            // "rodando" de um eval que pode já ter terminado.
+            amostraGlobal={amostra.erro ? null : amostra.dados}
+            recarregarAmostraGlobal={amostra.recarregar}
+            aoIrPara={trocarAba}
+            aoFalhar={aoFalhar}
+          />
+        )}
       </main>
 
       <NotificacaoFlutuante notificacao={notificacao} aoFechar={fecharNotificacao} />
