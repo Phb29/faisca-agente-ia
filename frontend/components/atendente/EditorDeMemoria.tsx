@@ -1,9 +1,9 @@
 "use client";
 
-import { Check, ChevronDown, NotebookPen, Plus, Undo2 } from "lucide-react";
+import { Check, ChevronDown, NotebookPen, Plus, Undo2, X } from "lucide-react";
 import { useId, useState } from "react";
 import { lerMemoriaProcedural, listarClientes, salvarMemoriaProcedural } from "@/lib/api";
-import { Botao } from "@/components/ui/Botao";
+import { Botao, BotaoDeIcone } from "@/components/ui/Botao";
 import { Ponto } from "@/components/ui/Pilula";
 import { Esqueleto } from "@/components/ui/Vazio";
 import { useRecurso } from "@/hooks/useRecurso";
@@ -14,16 +14,26 @@ const EXEMPLOS = [
   "Tratar o Cliente pelo primeiro nome.",
   "Confirmar o Pedido antes de agir.",
 ];
+const MAXIMO_DE_PREFERENCIAS = 5;
+const SEM_PREFERENCIAS: string[] = [];
+
+/** O que o Atendente mexeu e ainda não salvou; o que ficou `undefined` segue o salvo. */
+type Rascunho = { texto?: string; preferencias?: string[] };
+
+const mesmaLista = (a: string[], b: string[]) => a.length === b.length && a.every((item, i) => item === b[i]);
 
 type Props = {
   aoSalvar: (mensagem: string) => void;
   aoErro: (erro: unknown) => void;
 };
 
-/** Instruções livres por Cliente que o chatbot recebe no system prompt de toda Conversa. */
+/** A Memória Procedural de cada Cliente, que o chatbot recebe no system prompt de toda
+ * Conversa: as instruções livres do Atendente e, embaixo, as preferências que o próprio
+ * Cliente pediu sobre a forma de falar, que o Atendente pode apagar. */
 export function EditorDeMemoria({ aoSalvar, aoErro }: Props) {
   const idDoCliente = useId();
   const idDoTexto = useId();
+  const idDasPreferencias = useId();
   const clientes = useRecurso("clientes", listarClientes, { aoErro });
   const [escolhido, setEscolhido] = useState<string | null>(null);
   const clienteId = escolhido ?? clientes.dados?.[0]?.id ?? null;
@@ -34,19 +44,33 @@ export function EditorDeMemoria({ aoSalvar, aoErro }: Props) {
     { aoErro },
   );
   // Rascunho por Cliente: trocar de Cliente não perde o que foi escrito no outro.
-  const [rascunhos, setRascunhos] = useState<Record<string, string>>({});
+  const [rascunhos, setRascunhos] = useState<Record<string, Rascunho>>({});
   const [salvando, setSalvando] = useState(false);
   const [salvoAgora, setSalvoAgora] = useState<string | null>(null);
 
-  const salvo = memoria.dados?.texto ?? "";
-  const texto = clienteId ? (rascunhos[clienteId] ?? salvo) : "";
-  const alterado = clienteId !== null && rascunhos[clienteId] !== undefined && rascunhos[clienteId] !== salvo;
+  const textoSalvo = memoria.dados?.texto ?? "";
+  const preferenciasSalvas = memoria.dados?.preferencias ?? SEM_PREFERENCIAS;
+  const rascunho = clienteId ? rascunhos[clienteId] : undefined;
+  const texto = clienteId ? (rascunho?.texto ?? textoSalvo) : "";
+  const preferencias = clienteId ? (rascunho?.preferencias ?? preferenciasSalvas) : SEM_PREFERENCIAS;
+  const textoAlterado = rascunho?.texto !== undefined && rascunho.texto !== textoSalvo;
+  const preferenciasAlteradas =
+    rascunho?.preferencias !== undefined && !mesmaLista(rascunho.preferencias, preferenciasSalvas);
+  const alterado = clienteId !== null && (textoAlterado || preferenciasAlteradas);
   const carregando = memoria.dados === null;
 
-  function editar(novo: string) {
+  function mudar(mudanca: Rascunho) {
     if (!clienteId) return;
-    setRascunhos((atuais) => ({ ...atuais, [clienteId]: novo }));
+    setRascunhos((atuais) => ({ ...atuais, [clienteId]: { ...atuais[clienteId], ...mudanca } }));
     setSalvoAgora(null);
+  }
+
+  function editar(novo: string) {
+    mudar({ texto: novo });
+  }
+
+  function apagarPreferencia(alvo: string) {
+    mudar({ preferencias: preferencias.filter((preferencia) => preferencia !== alvo) });
   }
 
   function descartar() {
@@ -62,7 +86,9 @@ export function EditorDeMemoria({ aoSalvar, aoErro }: Props) {
     if (!clienteId) return;
     setSalvando(true);
     try {
-      await salvarMemoriaProcedural(clienteId, texto);
+      // A lista só vai quando o Atendente apagou alguma: assim, uma preferência que o
+      // Cliente pediu enquanto a tela estava aberta não some ao salvar só o texto.
+      await salvarMemoriaProcedural(clienteId, preferenciasAlteradas ? { texto, preferencias } : { texto });
       await memoria.recarregar();
       descartar();
       setSalvoAgora(clienteId);
@@ -145,6 +171,48 @@ export function EditorDeMemoria({ aoSalvar, aoErro }: Props) {
             </li>
           ))}
         </ul>
+
+        <div className="mt-6 border-t border-line pt-5">
+          <div className="flex items-baseline justify-between gap-3">
+            <h3 id={idDasPreferencias} className="text-[12.5px] font-medium text-ink-2">
+              Preferências pedidas pelo Cliente
+            </h3>
+            {!carregando && (
+              <span className="font-mono text-[11px] text-muted">
+                {preferencias.length}/{MAXIMO_DE_PREFERENCIAS}
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-[12px] leading-relaxed text-muted">
+            O chatbot grava sozinho quando o Cliente pede outra forma de falar. Valem só para a forma, nunca para a
+            política, e valem menos que as suas instruções. Apague o que não deve valer.
+          </p>
+          {carregando ? (
+            <Esqueleto className="mt-3 h-11 rounded-xl" />
+          ) : preferencias.length === 0 ? (
+            <p className="mt-3 rounded-xl bg-surface-2 px-3.5 py-3 text-[13px] text-muted ring-1 ring-line ring-inset">
+              Nenhuma preferência pedida por este Cliente.
+            </p>
+          ) : (
+            <ul aria-labelledby={idDasPreferencias} className="mt-3 space-y-1.5">
+              {preferencias.map((preferencia) => (
+                <li
+                  key={preferencia}
+                  className="flex items-center gap-2 rounded-xl bg-surface-2 py-1 pr-1 pl-3.5 ring-1 ring-line ring-inset"
+                >
+                  <span className="min-w-0 flex-1 text-[13.5px] leading-snug break-words">{preferencia}</span>
+                  <BotaoDeIcone
+                    icone={X}
+                    rotulo={`Apagar a preferência “${preferencia}”`}
+                    tamanho="sm"
+                    disabled={salvando}
+                    onClick={() => apagarPreferencia(preferencia)}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center justify-between gap-3 border-t border-line bg-surface-2 px-5 py-3.5 sm:px-6">

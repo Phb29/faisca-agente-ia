@@ -102,7 +102,11 @@ export type Ticket = {
 };
 
 export type ConversaDoTicket = { ticket: Ticket; mensagens: Mensagem[] };
-export type MemoriaProcedural = { texto: string };
+/** As duas partes da Memória Procedural: as instruções do Atendente e as preferências que o
+ * próprio Cliente pediu sobre a forma de falar (o chatbot grava sozinho; o Atendente apaga). */
+export type MemoriaProcedural = { texto: string; preferencias: string[] };
+/** Sem `preferencias`, a api deixa a lista como está; com ela, substitui a lista inteira. */
+export type EdicaoDaMemoria = { texto: string; preferencias?: string[] };
 export type MensagemEnfileirada = { enfileirada: boolean; conteudo: string };
 export type Decisao = { job_id: string | number };
 
@@ -226,8 +230,8 @@ const rotaDaMemoria = (clienteId: string) =>
 export const lerMemoriaProcedural = (clienteId: string) =>
   requisitar<MemoriaProcedural>(rotaDaMemoria(clienteId));
 
-export const salvarMemoriaProcedural = (clienteId: string, texto: string) =>
-  requisitar<MemoriaProcedural>(rotaDaMemoria(clienteId), { metodo: "PUT", corpo: { texto } });
+export const salvarMemoriaProcedural = (clienteId: string, edicao: EdicaoDaMemoria) =>
+  requisitar<MemoriaProcedural>(rotaDaMemoria(clienteId), { metodo: "PUT", corpo: edicao });
 
 // ---------- Avaliação ----------
 
