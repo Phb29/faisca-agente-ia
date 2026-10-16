@@ -10,7 +10,10 @@ from ampere.nucleo.banco import conectar
 
 PASTA_MIGRACOES = Path(__file__).parent / "migracoes"
 
+# Na ordem em que `apagar_tudo` derruba: quem tem chave estrangeira vem antes de quem ela aponta.
 TABELAS_NOSSAS = (
+    "sessoes",
+    "tentativas_de_login",
     "execucoes_de_eval",
     "tickets",
     "aprovacoes_pendentes",
