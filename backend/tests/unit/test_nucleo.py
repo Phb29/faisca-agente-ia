@@ -8,7 +8,7 @@ from typesafe_sdk import Choice, Noul, SystemOneResponse
 from ampere.nucleo.config import Config
 from ampere.nucleo.falsos import JevFalso, ModeloFalso
 from ampere.nucleo.jev import JevReal
-from ampere.nucleo.modelos import CUSTO_POR_PAPEL, FabricaDeModelos
+from ampere.nucleo.modelos import FabricaDeModelos
 from ampere.regras import PerguntaDeEscolha, PerguntaSimNao
 
 PERGUNTAS = {
@@ -154,8 +154,7 @@ def test_fabrica_injecao_sobrepoe_o_padrao():
     assert fabrica.jev() is jev
 
 
-def test_fabrica_real_nomeia_tres_papeis_com_custo():
-    assert set(CUSTO_POR_PAPEL) == {"gerador", "juiz", "trabalhador"}
+def test_fabrica_real_nomeia_tres_papeis():
     config = Config(modelos_falsos=False, openai_api_key="x", groq_api_key="y")
     fabrica = FabricaDeModelos(config)
 

@@ -21,13 +21,6 @@ from ampere.nucleo.demonstracao import (
 from ampere.nucleo.falsos import ModeloFalso
 from ampere.nucleo.jev import ClienteJev, JevReal
 
-# USD por milhão de tokens (entrada, saída), para a tabela de custo do README.
-CUSTO_POR_PAPEL: dict[str, dict[str, float | str]] = {
-    "gerador": {"modelo": "gpt-5.6-terra", "entrada": 2.50, "saida": 10.00},
-    "juiz": {"modelo": "gpt-5.6-sol", "entrada": 15.00, "saida": 60.00},
-    "trabalhador": {"modelo": "openai/gpt-oss-120b (Groq)", "entrada": 0.15, "saida": 0.60},
-}
-
 
 class FabricaDeModelos:
     def __init__(

@@ -70,13 +70,15 @@ Ou tudo de uma vez, incluindo api, worker e frontend em containers: `docker comp
 
 ## Custo por papel
 
-Modelo caro não é para tudo ([ADR 0002](docs/adr/0002-tres-niveis-de-modelo.md)). Valores em USD por milhão de tokens, de `CUSTO_POR_PAPEL` em [backend/ampere/nucleo/modelos.py](backend/ampere/nucleo/modelos.py).
+Modelo caro não é para tudo ([ADR 0002](docs/adr/0002-tres-niveis-de-modelo.md)). O modelo de cada papel vem do `.env` (`MODELO_GERADOR`, `MODELO_JUIZ`, `MODELO_TRABALHADOR`); a tabela abaixo é a de produção. Valores em USD por milhão de tokens, consultados em 16/10/2026 na [página de preços da OpenAI](https://developers.openai.com/api/docs/pricing) e na [ficha do modelo na Groq](https://console.groq.com/docs/model/openai/gpt-oss-120b).
 
 | Papel | Modelo | Entrada | Saída | Faz o quê |
 |---|---|---|---|---|
-| gerador | gpt-5.6-terra (OpenAI) | 2,50 | 10,00 | escreve para o Cliente e escolhe as Ações |
-| juiz | gpt-5.6-sol (OpenAI) | 15,00 | 60,00 | só nos evals; avalia respostas com crítica |
+| gerador | gpt-6-luna (OpenAI) | 0,10 | 0,50 | escreve para o Cliente e escolhe as Ações |
+| juiz | gpt-6.1-sol (OpenAI) | 2,00 | 10,00 | só nos evals; avalia respostas com crítica |
 | trabalhador | openai/gpt-oss-120b (Groq) | 0,15 | 0,60 | extrai memórias, resume Conversas e Tickets, self-querying |
+
+O preço não mora no código: o custo medido de cada chamada sai do trace no Langfuse, que calcula pelos tokens. O gpt-6-luna e o gpt-6.1-sol já vêm com preço no Langfuse; o gpt-oss-120b da Groq foi cadastrado à mão (Settings > Models), com os tokens de raciocínio cobrados como saída. Ao trocar de modelo, confira se o Langfuse conhece o preço do novo: se não conhecer, o custo daquele papel aparece como zero.
 
 O Jev não entra na tabela: não gera texto, responde perguntas tipadas com probabilidade calibrada em milissegundos ([ADR 0001](docs/adr/0001-jev-decide-llm-escreve.md)).
 
