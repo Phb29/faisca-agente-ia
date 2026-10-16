@@ -201,9 +201,9 @@ def test_limpar_antigas_apaga_falhas_de_mais_de_um_dia_e_sucessos_de_mais_de_30(
 # --- rotas ------------------------------------------------------------------------------
 
 
-def _app(banco, pool, **login):
-    login = login or {"login_email": "dono@exemplo.com.br", "login_senha_hash": HASH}
-    config = Config(database_url=banco, modelos_falsos=True, **login)
+def _app(banco, pool, **ajustes):
+    login = {"login_email": "dono@exemplo.com.br", "login_senha_hash": HASH}
+    config = Config(database_url=banco, modelos_falsos=True, **{**login, **ajustes})
     return criar_app(config, pool=pool, verificar_qdrant=lambda: True)
 
 
@@ -361,6 +361,40 @@ async def test_toda_rota_protegida_sem_bearer_da_401_e_health_continua_aberta(ba
                 assert resp.status_code == 401, (metodo, caminho, headers)
                 assert resp.json() == SEM_SESSAO
         assert (await client.get("/health")).status_code == 200
+
+
+async def test_com_segredo_do_bff_toda_rota_menos_health_exige_o_cabecalho(banco, pool, sessao):
+    """O frontend manda `X-Bff-Segredo` em toda chamada. Sem ele, ou com outro valor, é 403
+    antes de qualquer rota: o login nem é tentado, e ninguém de fora forja `X-Ip-Do-Cliente`."""
+    app = _app(banco, pool, bff_segredo="segredo-do-bff")
+    proibido = {"detail": "Origem não autorizada."}
+    chamadas = [
+        ("GET", "/acesso/eu", None),
+        ("POST", "/acesso/entrar", {"email": EMAIL, "senha": SENHA}),
+        ("POST", "/acesso/sair", None),
+        ("GET", "/clientes", None),
+        ("POST", "/health", None),
+        ("GET", "/docs", None),
+    ]
+
+    async with _cliente(app) as client:
+        for errado in ({}, {"X-Bff-Segredo": "outro"}, {"X-Bff-Segredo": ""}):
+            for metodo, caminho, corpo in chamadas:
+                headers = {**sessao, **IP, **errado}
+                resp = await client.request(metodo, caminho, json=corpo, headers=headers)
+                assert (resp.status_code, resp.json()) == (403, proibido), (caminho, errado)
+        assert (await client.get("/health")).status_code == 200
+        assert _contar(pool, "tentativas_de_login") == 0
+        assert _contar(pool, "sessoes") == 1  # o sair sem segredo não derrubou a sessão
+
+        certo = {"X-Bff-Segredo": "segredo-do-bff"}
+        assert (await client.get("/acesso/eu", headers={**sessao, **certo})).status_code == 200
+        assert (await _entrar(client, headers={**IP, **certo})).status_code == 200
+
+
+async def test_sem_segredo_do_bff_configurado_o_cabecalho_nao_e_exigido(client, sessao):
+    assert (await client.get("/acesso/eu", headers=sessao)).status_code == 200
+    assert (await _entrar(client)).status_code == 200
 
 
 async def test_documentacao_da_api_nao_fica_exposta():

@@ -61,6 +61,10 @@ class Config(BaseSettings):
     login_senha_hash: str = ""
     sessao_horas: int = 12
 
+    # Segredo que o frontend (BFF) manda em `X-Bff-Segredo` em toda chamada. Com ele, a api
+    # recusa com 403 quem não o traz, menos o `GET /health`. Vazio desliga a conferência.
+    bff_segredo: str = ""
+
 
 @cache
 def config() -> Config:
