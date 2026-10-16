@@ -1,9 +1,10 @@
 """Os comandos dos evals gravam a execução completa no banco, a menos de `--sem-salvar` ou
-de uma rodada parcial (`--amostra`)."""
+de uma rodada parcial (`--amostra`); `hash-senha` imprime um hash que confere com a senha."""
 
 from typer.testing import CliRunner
 
 from ampere import cli
+from ampere.acesso.senha import conferir
 from ampere.evals.relatorio import Relatorio
 from ampere.nucleo.config import Config
 
@@ -92,3 +93,20 @@ def test_salvar_ignora_relatorio_vazio_e_sem_salvar(monkeypatch):
 
     cli._salvar("rag", None, sem_salvar=False)
     cli._salvar("rag", RELATORIO, sem_salvar=True)
+
+
+def test_hash_senha_le_a_senha_da_entrada_padrao():
+    resultado = CliRunner().invoke(cli.app, ["hash-senha"], input="uma senha longa\n")
+
+    assert resultado.exit_code == 0, resultado.output
+    hash_ = resultado.output.strip()
+    assert hash_.startswith("scrypt:")
+    assert conferir("uma senha longa", hash_)
+    assert "uma senha longa" not in resultado.output
+
+
+def test_hash_senha_recusa_senha_vazia():
+    resultado = CliRunner().invoke(cli.app, ["hash-senha"], input="\n")
+
+    assert resultado.exit_code != 0
+    assert "scrypt:" not in resultado.output

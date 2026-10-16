@@ -97,6 +97,28 @@ def ingest(
         typer.echo(f"{nome_embedder} + {nome_chunker}: {total} chunks")
 
 
+@app.command("hash-senha")
+def hash_senha() -> None:
+    """Imprime o hash de uma senha para LOGIN_SENHA_HASH. No terminal, pede a senha duas
+    vezes sem mostrar; fora dele, lê uma linha da entrada padrão."""
+    import getpass
+    import sys
+
+    from ampere.acesso.senha import gerar_hash
+
+    if sys.stdin.isatty():
+        senha = getpass.getpass("Senha: ")
+        if getpass.getpass("Repita a senha: ") != senha:
+            typer.echo("as duas senhas não conferem", err=True)
+            raise typer.Exit(1)
+    else:
+        senha = sys.stdin.readline().rstrip("\r\n")
+    if not senha:
+        typer.echo("senha vazia", err=True)
+        raise typer.Exit(1)
+    typer.echo(gerar_hash(senha))
+
+
 @app.command()
 def api(host: str = "0.0.0.0", port: int = 8000) -> None:
     """Sobe a API HTTP (FastAPI)."""
