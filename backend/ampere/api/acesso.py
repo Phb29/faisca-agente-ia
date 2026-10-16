@@ -4,20 +4,35 @@ O navegador não fala com a api: o frontend repassa cada chamada, guarda o token
 `HttpOnly` dele e o manda aqui como `Authorization: Bearer`, junto com o IP do navegador em
 `X-Ip-Do-Cliente` (ver docs/superpowers/specs/2026-10-16-login.md). A senha nunca vai para o
 log.
+
+`entrar` é assíncrona de propósito. Cada scrypt usa 32 MiB e leva perto de um décimo de
+segundo, então só `LOGINS_SIMULTANEOS` logins correm juntos por processo. Quem não consegue a
+vez em `ESPERA_PELA_VEZ` segundos recebe 503 sem ter tocado no banco nem ocupado uma thread.
+Dentro da vez, o banco é usado em passos curtos, cada um com a própria conexão, e o scrypt
+roda sem conexão nenhuma na mão. Assim uma rajada de logins não esgota o pool nem as threads
+da api, e as outras rotas continuam respondendo.
 """
 
+import asyncio
 import hmac
 import math
+from collections.abc import Callable
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Request, Response
+from psycopg_pool import ConnectionPool
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from ampere.acesso.senha import HASH_FIXO, conferir
 from ampere.acesso.sessoes import criar_sessao, encerrar_sessao, limpar_expiradas
 from ampere.acesso.tentativas import bloqueio, limpar_antigas, normalizar, registrar
-from ampere.api.dependencias import Conexao, Configuracao, IpDoCliente, SessaoAtual, TokenDaSessao
+from ampere.api.dependencias import Configuracao, IpDoCliente, Pool, SessaoAtual, TokenDaSessao
 from ampere.nucleo.config import Config
+
+LOGINS_SIMULTANEOS = 4
+ESPERA_PELA_VEZ = 1.0  # segundos
+ESPERA_POR_CONEXAO = 2.0  # segundos
 
 router = APIRouter(prefix="/acesso")
 
@@ -38,45 +53,83 @@ class QuemEsta(BaseModel):
     expira_em: datetime
 
 
+def nova_vez_do_login() -> asyncio.Semaphore:
+    """As vagas de login de um app. Fica no `app.state`, uma por app (e por processo), e não
+    no módulo: um semáforo do asyncio se prende ao primeiro laço de eventos que espera nele."""
+    return asyncio.Semaphore(LOGINS_SIMULTANEOS)
+
+
 @router.post("/entrar")
-def entrar(
-    corpo: Credenciais, request: Request, conn: Conexao, config: Configuracao, ip: IpDoCliente
+async def entrar(
+    corpo: Credenciais, request: Request, pool: Pool, config: Configuracao, ip: IpDoCliente
 ) -> SessaoAberta:
-    """Primeiro o bloqueio: com tentativas demais, 429 sem registrar tentativa nova. Depois
-    e-mail e senha, com a mesma resposta (e o mesmo tempo) para os dois errados."""
-    email = normalizar(corpo.email)
-    espera = bloqueio(conn, email, ip)
+    """Primeiro a vez; depois o bloqueio: com tentativas demais, 429 sem registrar tentativa
+    nova. Depois e-mail e senha, com a mesma resposta (e o mesmo tempo) para os dois errados."""
+    vez: asyncio.Semaphore = request.app.state.vez_do_login
+    try:
+        await asyncio.wait_for(vez.acquire(), ESPERA_PELA_VEZ)
+    except TimeoutError:
+        raise HTTPException(
+            status_code=503,
+            detail="Muitas tentativas agora. Tente de novo em instantes.",
+            headers={"Retry-After": "1"},
+        ) from None
+    try:
+        user_agent = request.headers.get("user-agent", "")[:300]
+        return await _entrar(pool, config, normalizar(corpo.email), corpo.senha, ip, user_agent)
+    finally:
+        vez.release()
+
+
+@router.post("/sair", status_code=204)
+async def sair(pool: Pool, token: TokenDaSessao) -> Response:
+    """Encerra a sessão do Bearer. Sem Bearer, ou com a sessão já encerrada, também é 204:
+    sair duas vezes não é erro."""
+    if token:
+        await _no_banco(pool, encerrar_sessao, token)
+    return Response(status_code=204)
+
+
+@router.get("/eu")
+async def eu(sessao: SessaoAtual) -> QuemEsta:
+    return QuemEsta(email=sessao.email, expira_em=sessao.expira_em)
+
+
+async def _entrar(
+    pool: ConnectionPool, config: Config, email: str, senha: str, ip: str, user_agent: str
+) -> SessaoAberta:
+    espera = await _no_banco(pool, bloqueio, email, ip)
     if espera is not None:
         raise HTTPException(
             status_code=429,
             detail=f"Muitas tentativas. Tente de novo em {_minutos(espera)}.",
             headers={"Retry-After": str(espera)},
         )
-    certo = _credenciais_conferem(config, email, corpo.senha)
-    registrar(conn, email, ip, certo)
-    limpar_expiradas(conn)
-    limpar_antigas(conn)
+    certo = await run_in_threadpool(_credenciais_conferem, config, email, senha)
+    await _no_banco(pool, _registrar_e_limpar, email, ip, certo)
     if not certo:
         raise HTTPException(status_code=401, detail="E-mail ou senha incorretos.")
-    user_agent = request.headers.get("user-agent", "")[:300]
-    token, expira_em = criar_sessao(
-        conn, email, horas=config.sessao_horas, ip=ip, user_agent=user_agent
+    token, expira_em = await _no_banco(
+        pool, criar_sessao, email, horas=config.sessao_horas, ip=ip, user_agent=user_agent
     )
     return SessaoAberta(token=token, email=email, expira_em=expira_em)
 
 
-@router.post("/sair", status_code=204)
-def sair(conn: Conexao, token: TokenDaSessao) -> Response:
-    """Encerra a sessão do Bearer. Sem Bearer, ou com a sessão já encerrada, também é 204:
-    sair duas vezes não é erro."""
-    if token:
-        encerrar_sessao(conn, token)
-    return Response(status_code=204)
+def _registrar_e_limpar(conn, email: str, ip: str, certo: bool) -> None:
+    registrar(conn, email, ip, certo)
+    limpar_expiradas(conn)
+    limpar_antigas(conn)
 
 
-@router.get("/eu")
-def eu(sessao: SessaoAtual) -> QuemEsta:
-    return QuemEsta(email=sessao.email, expira_em=sessao.expira_em)
+async def _no_banco[T](pool: ConnectionPool, passo: Callable[..., T], *args, **kwargs) -> T:
+    """Roda um passo curto numa thread, com uma conexão pega só para ele e devolvida logo
+    depois. Sem conexão livre em `ESPERA_POR_CONEXAO` segundos, o `PoolTimeout` vira 503."""
+
+    def rodar() -> T:
+        with pool.connection(timeout=ESPERA_POR_CONEXAO) as conn:
+            return passo(conn, *args, **kwargs)
+
+    return await run_in_threadpool(rodar)
 
 
 def _credenciais_conferem(config: Config, email: str, senha: str) -> bool:

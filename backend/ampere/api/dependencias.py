@@ -1,5 +1,9 @@
 """Dependências das rotas: configuração, conexão com o banco, a sessão de quem chama, o IP do
-navegador e qual Cliente de exemplo o chat representa."""
+navegador e qual Cliente de exemplo o chat representa.
+
+As que só leem o request são `async`: rodam no laço de eventos, sem ocupar uma thread. As que
+falam com o banco esperam no máximo `ESPERA_POR_CONEXAO` segundos por uma conexão livre; sem
+ela, o `PoolTimeout` vira 503 em `criar_app`, em vez de deixar o request parado."""
 
 import uuid
 from collections.abc import Iterator
@@ -15,12 +19,14 @@ from ampere.nucleo.config import Config
 
 _bearer = HTTPBearer(auto_error=False, description="Token devolvido por POST /acesso/entrar.")
 
+ESPERA_POR_CONEXAO = 5.0  # segundos
 
-def obter_config(request: Request) -> Config:
+
+async def obter_config(request: Request) -> Config:
     return request.app.state.config
 
 
-def obter_pool(request: Request) -> ConnectionPool:
+async def obter_pool(request: Request) -> ConnectionPool:
     return request.app.state.pool
 
 
@@ -30,11 +36,11 @@ Pool = Annotated[ConnectionPool, Depends(obter_pool)]
 
 def conexao(pool: Pool) -> Iterator[psycopg.Connection]:
     """Uma conexão do pool por request, em autocommit; transações são explícitas."""
-    with pool.connection() as conn:
+    with pool.connection(timeout=ESPERA_POR_CONEXAO) as conn:
         yield conn
 
 
-def token_da_sessao(
+async def token_da_sessao(
     credenciais: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
 ) -> str | None:
     """O token do cabeçalho `Authorization: Bearer <token>`, ou None. A api não lê cookie: quem
@@ -47,7 +53,7 @@ def exigir_sessao(pool: Pool, token: Annotated[str | None, Depends(token_da_sess
     `conexao` do request, que numa rota de stream ficaria presa enquanto o stream durasse."""
     sessao = None
     if token:
-        with pool.connection() as conn:
+        with pool.connection(timeout=ESPERA_POR_CONEXAO) as conn:
             sessao = sessao_valida(conn, token)
     if sessao is None:
         raise HTTPException(
@@ -58,7 +64,9 @@ def exigir_sessao(pool: Pool, token: Annotated[str | None, Depends(token_da_sess
     return sessao
 
 
-def ip_do_cliente(request: Request, x_ip_do_cliente: Annotated[str | None, Header()] = None) -> str:
+async def ip_do_cliente(
+    request: Request, x_ip_do_cliente: Annotated[str | None, Header()] = None
+) -> str:
     """O IP do navegador, para o limite de tentativas. Vem do `X-Ip-Do-Cliente`, que o frontend
     monta a partir do `X-Forwarded-For` do Railway; a api só confia nele porque não tem
     endereço público. Sem o cabeçalho, vale o IP da conexão."""

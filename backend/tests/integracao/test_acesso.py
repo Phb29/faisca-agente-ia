@@ -1,12 +1,16 @@
 """Acesso: sessões e limite de tentativas no Postgres, as rotas de login e a sessão exigida em
 todas as outras rotas, menos `/health` e `/acesso/entrar`."""
 
+import asyncio
 import hashlib
 import logging
+import threading
+import time
 
 import httpx
 import pytest
 from httpx import ASGITransport
+from psycopg_pool import PoolTimeout
 
 from ampere.acesso.senha import gerar_hash
 from ampere.acesso.sessoes import (
@@ -16,6 +20,7 @@ from ampere.acesso.sessoes import (
     sessao_valida,
 )
 from ampere.acesso.tentativas import bloqueio, limpar_antigas, registrar
+from ampere.api import acesso as rotas_de_acesso
 from ampere.api.app import criar_app
 from ampere.nucleo.config import Config
 
@@ -311,6 +316,86 @@ async def test_hash_estragado_na_configuracao_da_401(banco, pool):
 
     assert resp.status_code == 401
     assert resp.json() == FALHOU
+
+
+# --- rajadas ----------------------------------------------------------------------------
+
+
+class _ConferirEspiao:
+    """Troca o scrypt por uma espera fixa e conta quantas senhas foram conferidas e quantas
+    ao mesmo tempo, no pico."""
+
+    def __init__(self, segundos: float, resultado: bool = False):
+        self.segundos, self.resultado = segundos, resultado
+        self.chamadas = self.ativos = self.pico = 0
+        self._trava = threading.Lock()
+
+    def __call__(self, senha: str, hash_: str) -> bool:
+        with self._trava:
+            self.chamadas += 1
+            self.ativos += 1
+            self.pico = max(self.pico, self.ativos)
+        time.sleep(self.segundos)
+        with self._trava:
+            self.ativos -= 1
+        return self.resultado
+
+
+async def test_rajada_de_logins_errados_nao_trava_as_outras_rotas(banco, pool, sessao, monkeypatch):
+    """Trinta logins errados ao mesmo tempo, cada um de um IP, com o scrypt lento: no máximo 4
+    conferem a senha juntos, quem não consegue a vez logo recebe 503, nenhum dá 500, e a
+    sessão aberta continua sendo atendida na hora, porque o login não segura conexão do pool
+    nem thread enquanto espera."""
+    espiao = _ConferirEspiao(segundos=0.3)
+    monkeypatch.setattr(rotas_de_acesso, "conferir", espiao)
+
+    async with _cliente(_app(banco, pool)) as client:
+
+        async def eu_no_meio_da_rajada():
+            await asyncio.sleep(0.1)
+            inicio = time.monotonic()
+            resp = await client.get("/acesso/eu", headers=sessao)
+            return resp, time.monotonic() - inicio
+
+        rajada = [
+            _entrar(client, senha="chute", headers={"X-Ip-Do-Cliente": f"198.51.100.{i}"})
+            for i in range(30)
+        ]
+        *logins, (eu, demora) = await asyncio.gather(*rajada, eu_no_meio_da_rajada())
+
+    assert eu.status_code == 200
+    assert demora < 1.0
+    estados = [resp.status_code for resp in logins]
+    assert set(estados) <= {401, 429, 503}, estados
+    assert 1 <= espiao.pico <= 4
+    ocupado = next(resp for resp in logins if resp.status_code == 503)
+    assert ocupado.json() == {"detail": "Muitas tentativas agora. Tente de novo em instantes."}
+    assert ocupado.headers["Retry-After"] == "1"
+
+
+class _PoolEsgotado:
+    """Um pool em que nunca sobra conexão."""
+
+    def connection(self, timeout: float | None = None):
+        raise PoolTimeout("sem conexão livre")
+
+
+async def test_pool_esgotado_vira_503_rapido_e_nao_prende_a_vez_do_login():
+    config = Config(modelos_falsos=True, login_email=EMAIL, login_senha_hash=HASH)
+    app = criar_app(config, pool=_PoolEsgotado(), verificar_qdrant=lambda: True)
+    ocupado = {"detail": "Banco ocupado. Tente de novo em instantes."}
+
+    async with _cliente(app) as client:
+        for _ in range(6):  # mais que as 4 vagas: a vez é devolvida mesmo com erro
+            resp = await _entrar(client)
+            assert resp.status_code == 503
+            assert resp.json() == ocupado
+            assert resp.headers["Retry-After"] == "1"
+        eu = await client.get("/acesso/eu", headers={"Authorization": "Bearer qualquer"})
+        sair = await client.post("/acesso/sair", headers={"Authorization": "Bearer qualquer"})
+
+    assert (eu.status_code, eu.json()) == (503, ocupado)
+    assert (sair.status_code, sair.json()) == (503, ocupado)
 
 
 def _parametros(caminho: str) -> list[str]:

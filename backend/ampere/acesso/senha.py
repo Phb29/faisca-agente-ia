@@ -5,25 +5,20 @@ O formato é `scrypt:N:r:p:<sal>:<hash>`, com sal e hash em base64url sem `=` no
 hash sem aviso. Os parâmetros vão junto, então dá para subir o custo no futuro sem invalidar
 os hashes antigos.
 
-Cada scrypt usa 32 MiB. Uma rajada de logins rodando todos ao mesmo tempo, um por thread da
-api, passaria de 1 GiB e derrubaria o processo; por isso só alguns rodam juntos, e o resto
-espera a vez.
+Cada scrypt usa 32 MiB. Quem limita quantos rodam juntos é a rota de login, que só deixa
+alguns logins correrem ao mesmo tempo por processo (ver `ampere/api/acesso.py`).
 """
 
 import base64
 import hashlib
 import hmac
 import secrets
-import threading
 
 N = 2**15
 R = 8
 P = 1
 TAMANHO = 32
 MEMORIA_MAXIMA = 64 * 1024 * 1024  # o scrypt com N=2**15 e r=8 usa 32 MiB
-SIMULTANEOS = 4
-
-_vez = threading.BoundedSemaphore(SIMULTANEOS)
 
 # Hash de uma senha aleatória que ninguém guardou, com o custo padrão. Quando o e-mail não
 # bate, o login confere a senha contra ele, para gastar o mesmo tempo de quando o e-mail bate.
@@ -50,10 +45,9 @@ def conferir(senha: str, hash_: str) -> bool:
 
 
 def _scrypt(senha: str, sal: bytes, n: int, r: int, p: int, tamanho: int) -> bytes:
-    with _vez:
-        return hashlib.scrypt(
-            senha.encode(), salt=sal, n=n, r=r, p=p, maxmem=MEMORIA_MAXIMA, dklen=tamanho
-        )
+    return hashlib.scrypt(
+        senha.encode(), salt=sal, n=n, r=r, p=p, maxmem=MEMORIA_MAXIMA, dklen=tamanho
+    )
 
 
 def _codificar(dados: bytes) -> str:
