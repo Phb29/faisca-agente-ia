@@ -19,19 +19,18 @@ Serviço a partir da imagem `qdrant/qdrant` (o compose usa `v1.19.1`; fixe a mes
 Serviço a partir do repositório com root directory `backend`. O Railway detecta o `backend/Dockerfile`, que instala as dependências com `uv` e baixa os pesos do MiniLM, do BM25 e do ColBERT no build, para o container subir rápido. Configure:
 
 - Root directory: `backend`
-- Pre-deploy command: `ampere migrate` (aplica as migrações da fila e prepara as tabelas do checkpointer e do Store antes de cada deploy)
-- Start command: `ampere api --port $PORT` (o Railway injeta `PORT`; o comando aceita a porta como opção)
+- Pre-deploy command: `ampere migrate` (aplica as migrações da fila e do login, inclusive a 0005 de sessões e tentativas, e prepara as tabelas do checkpointer e do Store antes de cada deploy)
+- Start command: `ampere api --host :: --port $PORT` (o Railway injeta `PORT`; `--host ::` é obrigatório porque a rede interna do Railway é IPv6, e `0.0.0.0` não escuta nela)
 - Healthcheck path: `/health` (responde 200 só quando Postgres e Qdrant respondem)
-- Gere um domínio público em Settings → Networking; ele vira o `NEXT_PUBLIC_API_URL` do frontend
+- Sem domínio público (ADR 0010): a api só é alcançada pela rede interna, em `api.railway.internal`, pelo frontend e pelo worker; não gere domínio em Settings → Networking
 
 Pelo CLI, com o serviço criado e linkado:
 
 ```bash
 railway environment edit --service-config api source.rootDirectory "/backend"
 railway environment edit --service-config api deploy.preDeployCommand "ampere migrate"
-railway environment edit --service-config api deploy.startCommand "ampere api --port \$PORT"
+railway environment edit --service-config api deploy.startCommand "ampere api --host :: --port \$PORT"
 railway environment edit --service-config api deploy.healthcheckPath "/health"
-railway domain --service api
 ```
 
 ## 5. worker
@@ -40,11 +39,11 @@ Mesmo repositório, mesmo root directory `backend`, mesma imagem resultante; só
 
 ## 6. frontend
 
-Root directory `frontend`. O `frontend/Dockerfile` gera a imagem standalone do Next e precisa de `NEXT_PUBLIC_API_URL` **no build**, porque o Next embute o valor no bundle. O Railway passa as variáveis do serviço como build args para o Dockerfile (o `ARG NEXT_PUBLIC_API_URL` já está declarado lá), então basta definir a variável no serviço com o domínio público da api, por exemplo `https://api-production-xxxx.up.railway.app`, e gerar um domínio público para o frontend. O container escuta na `3000`, que é a `PORT` padrão da imagem.
+Root directory `frontend`. O navegador fala só com o frontend, que faz o papel de BFF e repassa cada chamada para a api (ADR 0010); por isso o frontend precisa de `API_INTERNA=http://api.railway.internal:8000`, apontando para a rede interna da api. Diferente do antigo `NEXT_PUBLIC_API_URL`, essa variável não entra no build: o `frontend/Dockerfile` não declara mais `ARG`, o BFF a lê em execução, então basta definir a variável no serviço. Gere um domínio público para o frontend; ele é a única porta de entrada do sistema. O container escuta na `3000`, que é a `PORT` padrão da imagem.
 
 ## Ordem do deploy e execuções dos evals
 
-Quando uma mudança traz migração nova, o deploy segue a ordem api, worker e frontend, esperando cada um terminar: a api aplica as migrações no pre-deploy, e um worker novo que subisse antes delas falharia ao reservar jobs. As execuções completas que a Tela de Avaliação mostra são rodadas de dentro do worker, que enxerga o banco e tem as chaves: `railway ssh --service worker -- ampere-evals rag`, depois `agente` e `calibracao`. O RAG completo gasta a cota da Groq do trabalhador do chat; rode com folga antes da aula.
+Quando uma mudança traz migração nova, o deploy segue a ordem api, worker e frontend, esperando cada um terminar: a api aplica as migrações no pre-deploy (a 0005, de sessões e tentativas, entre elas), e um worker novo que subisse antes delas falharia ao reservar jobs. Depois do deploy do frontend, confira pelo domínio dele que a rota de login responde e que qualquer página sem sessão cai em `/entrar` (ADR 0010); como a api não tem mais domínio público, é por aí que se confirma o deploy, não por um `curl` direto nela. As execuções completas que a Tela de Avaliação mostra são rodadas de dentro do worker, que enxerga o banco e tem as chaves: `railway ssh --service worker -- ampere-evals rag`, depois `agente` e `calibracao`. O RAG completo gasta a cota da Groq do trabalhador do chat; rode com folga antes da aula.
 
 ## Variáveis por serviço
 
@@ -56,12 +55,14 @@ Quando uma mudança traz migração nova, o deploy segue a ordem api, worker e f
 | `GROQ_API_KEY` | | sim | | trabalhador |
 | `TYPESAFE_API_KEY` | | sim | | Jev |
 | `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` | | sim | | sem elas o tracing é no-op |
-| `ATENDENTE_TOKEN` | sim | | | protege a Tela do Atendente; troque o padrão |
+| `LOGIN_EMAIL` | sim | | | a conta que entra; `dono@exemplo.com.br` |
+| `LOGIN_SENHA_HASH` | sim | | | só o hash, gerado com `uv run --project backend ampere hash-senha`; a senha não fica no Railway |
+| `SESSAO_HORAS` | sim | | | validade da Sessão; `12` |
 | `ORIGENS_PERMITIDAS` | sim | | | CORS, em JSON: `["https://<domínio do frontend>"]` |
 | `EMBEDDER`, `CHUNKER`, `RERANKER`, `SELF_QUERYING` | sim | sim | | precisam ser iguais nos dois e iguais aos usados no `ingest` |
 | `LIMIAR_*`, `VALOR_LIMITE_REEMBOLSO`, `LIMITE_MENSAGENS_RESUMO` | | sim | | opcionais, ver `.env.example` |
 | `PROVEDOR_*`, `MODELO_*` | | sim | | opcionais; provedor e modelo de cada papel, ver `.env.example` |
-| `NEXT_PUBLIC_API_URL` | | | sim | domínio público da api, usado no build |
+| `API_INTERNA` | | | sim | a api pela rede interna: `http://api.railway.internal:8000` |
 
 Use variáveis compartilhadas do ambiente para `DATABASE_URL`, `QDRANT_URL`, `EMBEDDER` e `CHUNKER`, referenciadas na api e no worker, para não divergirem. Pelo CLI: `railway variable set OPENAI_API_KEY=... --service worker`.
 
@@ -76,4 +77,4 @@ Se trocar `EMBEDDER` ou `CHUNKER` depois, rode `ingest` de novo: a coleção do 
 
 ## Conferindo
 
-`railway status --json` mostra o contexto; `railway logs --service worker --lines 200` mostra o worker pegando jobs; `curl https://<domínio da api>/health` deve devolver `{"status":"ok","postgres":true,"qdrant":true}`. Abra o domínio do frontend, escolha um Cliente e mande uma mensagem; a resposta chega por SSE pelo mesmo caminho descrito no README raiz.
+`railway status --json` mostra o contexto; `railway logs --service worker --lines 200` mostra o worker pegando jobs. Como a api não tem domínio público, o `/health` só se confere de dentro da rede do Railway: `railway ssh --service api -- curl -s http://localhost:8000/health` deve devolver `{"status":"ok","postgres":true,"qdrant":true}`. Abra o domínio do frontend, entre com o login configurado, escolha um Cliente e mande uma mensagem; a resposta chega por SSE pelo mesmo caminho descrito no README raiz.

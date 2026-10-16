@@ -92,6 +92,12 @@ _Avoid_: Interrupt, checkpoint, pedido de revisão
 A página onde o Atendente vê as Aprovações Pendentes, os Tickets e edita a Memória Procedural de cada Cliente.
 _Avoid_: Painel, dashboard, admin
 
+## Acesso
+
+**Sessão**:
+O período em que o navegador está autenticado depois do login, válido por 12 horas e guardado no Postgres pelo hash do token, nunca pelo token em si. Protege o chat, a Central do Atendente e a Tela de Avaliação.
+_Avoid_: Conversa (que é a troca de mensagens com o chatbot), token, cookie
+
 ## Avaliação
 
 **Execução**:
@@ -103,5 +109,5 @@ A Execução de 3 casos sorteados de grupos diferentes, disparada pela Tela de A
 _Avoid_: Demo, preview, teste rápido
 
 **Tela de Avaliação**:
-A página que projeta as Execuções dos três evals com números grandes e dispara a Amostra ao vivo, protegida pelo token do Atendente.
+A página que projeta as Execuções dos três evals com números grandes e dispara a Amostra ao vivo, protegida pela Sessão de login (ADR 0010).
 _Avoid_: Dashboard de evals, painel de métricas

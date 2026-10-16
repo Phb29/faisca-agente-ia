@@ -107,5 +107,6 @@ Também: [frontend](frontend), [tests](backend/tests), [CONTEXT.md](CONTEXT.md) 
 - [0007 Regras do Jev em YAML legível, fora do código](docs/adr/0007-regras-do-jev-em-yaml.md)
 - [0008 Fornecedores atrás de interfaces do projeto, sem reorganizar em camadas](docs/adr/0008-fornecedores-atras-de-interfaces.md)
 - [0009 Avaliação ao vivo pela mesma fila e pelo mesmo stream do chat](docs/adr/0009-avaliacao-ao-vivo-pela-fila.md)
+- [0010 Login com sessão no Postgres e frontend como BFF](docs/adr/0010-login-com-sessao-e-frontend-como-bff.md)
 
 Deploy em produção, com cinco serviços no Railway: [docs/railway.md](docs/railway.md). Licença [MIT](LICENSE).
