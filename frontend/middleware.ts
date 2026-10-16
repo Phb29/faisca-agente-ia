@@ -9,7 +9,8 @@ export function middleware(request: NextRequest) {
   if (request.cookies.has(NOME_DO_COOKIE)) return NextResponse.next();
 
   const { pathname, search } = request.nextUrl;
-  // Absoluta e com a origem pública: atrás do proxy, a URL da requisição diz 0.0.0.0:3000.
+  // Absoluta e com a origem pública (a fixa, de ORIGEM_PUBLICA, quando há): atrás do proxy,
+  // a URL da requisição diz 0.0.0.0:3000.
   const entrada = new URL("/entrar", origemPublica(request));
   if (pathname !== "/") entrada.searchParams.set("proximo", pathname + search);
   return NextResponse.redirect(entrada);

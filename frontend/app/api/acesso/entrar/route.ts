@@ -2,7 +2,16 @@
 // HttpOnly. O navegador recebe só o e-mail; o token nunca sai do servidor do frontend.
 
 import { NextResponse, type NextRequest } from "next/server";
-import { baseDaApi, gravarCookie, ipDoCliente, recusarOrigemDeFora } from "@/lib/servidor/sessao";
+import {
+  LIMITE_DO_LOGIN,
+  apiNaoConfigurada,
+  baseDaApi,
+  cabecalhosParaApi,
+  gravarCookie,
+  ipDoCliente,
+  lerCorpo,
+  recusarOrigemDeFora,
+} from "@/lib/servidor/sessao";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +25,15 @@ export async function POST(request: NextRequest) {
   const recusa = recusarOrigemDeFora(request);
   if (recusa) return recusa;
 
-  const cabecalhos = new Headers({ "content-type": "application/json", accept: "application/json" });
+  const base = baseDaApi();
+  if (!base) return apiNaoConfigurada();
+
+  const corpo = await lerCorpo(request, LIMITE_DO_LOGIN);
+  if (corpo instanceof NextResponse) return corpo;
+
+  const cabecalhos = cabecalhosParaApi();
+  cabecalhos.set("content-type", "application/json");
+  cabecalhos.set("accept", "application/json");
   const ip = ipDoCliente(request);
   if (ip) cabecalhos.set("x-ip-do-cliente", ip);
   // A sessão guarda o navegador de quem entrou; sem isto, a api veria o fetch do Node.
@@ -25,10 +42,10 @@ export async function POST(request: NextRequest) {
 
   let resposta: Response;
   try {
-    resposta = await fetch(`${baseDaApi()}/acesso/entrar`, {
+    resposta = await fetch(`${base}/acesso/entrar`, {
       method: "POST",
       headers: cabecalhos,
-      body: await request.arrayBuffer(),
+      body: corpo,
       cache: "no-store",
     });
   } catch {
@@ -36,7 +53,8 @@ export async function POST(request: NextRequest) {
   }
 
   if (resposta.status !== 200) {
-    // 401, 429 e qualquer outra recusa voltam como vieram, com o Retry-After do bloqueio.
+    // 401, 429 (bloqueio por tentativas), 503 (rajada de logins) e qualquer outra recusa
+    // voltam como vieram, com o Retry-After.
     const volta = new Headers(SEM_CACHE);
     volta.set("content-type", resposta.headers.get("content-type") ?? "application/json");
     const espera = resposta.headers.get("retry-after");
