@@ -363,6 +363,18 @@ async def test_toda_rota_protegida_sem_bearer_da_401_e_health_continua_aberta(ba
         assert (await client.get("/health")).status_code == 200
 
 
+async def test_documentacao_da_api_nao_fica_exposta():
+    """O contrato continua em `app.openapi()` (o teste acima o percorre), mas não é servido:
+    não há por que mostrar o mapa das rotas a quem chega."""
+    app = criar_app(
+        Config(modelos_falsos=True), pool=_PoolEsgotado(), verificar_qdrant=lambda: True
+    )
+
+    async with _cliente(app) as client:
+        for caminho in ("/docs", "/docs/oauth2-redirect", "/redoc", "/openapi.json"):
+            assert (await client.get(caminho)).status_code == 404, caminho
+
+
 async def test_sessao_vale_nas_rotas_protegidas(client, sessao):
     assert (await client.get("/clientes", headers=sessao)).status_code == 200
     assert (await client.get("/atendente/aprovacoes", headers=sessao)).status_code == 200

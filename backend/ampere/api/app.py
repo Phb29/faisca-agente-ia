@@ -31,7 +31,14 @@ def criar_app(
     memoria_procedural: MemoriaProcedural | None = None,
     verificar_qdrant: VerificacaoDeSaude | None = None,
 ) -> FastAPI:
-    app = FastAPI(title="Suporte Ampère", version="0.2.0")
+    # Sem /docs, /redoc nem /openapi.json: o contrato fica em `app.openapi()`, para os testes.
+    app = FastAPI(
+        title="Suporte Ampère",
+        version="0.2.0",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
     app.state.config = config
     app.state.pool = pool
     app.state.memoria_procedural = memoria_procedural
