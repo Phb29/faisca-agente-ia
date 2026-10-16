@@ -35,6 +35,7 @@ def construir_grafo(
     nos = NosDoGrafo(deps)
     grafo = StateGraph(EstadoDaConversa)
 
+    # Definição dos Nós
     grafo.add_node("carregar_memoria", nos.carregar_memoria)
     grafo.add_node("guardrail_entrada", nos.guardrail_entrada)
     grafo.add_node("roteador", nos.roteador)
@@ -49,6 +50,7 @@ def construir_grafo(
     grafo.add_node("escalar", nos.escalar)
     grafo.add_node("salvar_memoria", nos.salvar_memoria)
 
+    # Definição das Arestas
     grafo.add_edge(START, "carregar_memoria")
     grafo.add_edge("carregar_memoria", "guardrail_entrada")
     grafo.add_conditional_edges(
