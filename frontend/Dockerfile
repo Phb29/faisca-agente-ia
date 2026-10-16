@@ -19,7 +19,7 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
-# API_INTERNA (a api pela rede interna) é lida em execução pelo BFF: vem do serviço, não do build.
+# API_INTERNA, BFF_SEGREDO e ORIGEM_PUBLICA são lidas em execução pelo BFF: vêm do serviço, não do build.
 RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
 COPY --from=build /app/public ./public
 COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
