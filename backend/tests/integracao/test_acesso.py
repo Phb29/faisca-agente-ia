@@ -19,7 +19,7 @@ from ampere.acesso.sessoes import (
     limpar_expiradas,
     sessao_valida,
 )
-from ampere.acesso.tentativas import bloqueio, limpar_antigas, registrar
+from ampere.acesso.tentativas import Bloqueado, comecar, limpar_antigas, marcar_sucesso
 from ampere.api import acesso as rotas_de_acesso
 from ampere.api.app import criar_app
 from ampere.nucleo.config import Config
@@ -43,6 +43,11 @@ def _falhas(conn, quantas: int, *, email=EMAIL, ip="10.0.0.1", ha_minutos: float
             "VALUES (%s, %s, false, now() - make_interval(secs => %s))",
             (email, ip, ha_minutos * 60),
         )
+
+
+def _contar_em(conn, onde: str = "true") -> int:
+    linha = conn.execute(f"SELECT count(*) AS n FROM tentativas_de_login WHERE {onde}").fetchone()
+    return linha["n"]
 
 
 # --- sessões ----------------------------------------------------------------------------
@@ -100,39 +105,56 @@ def test_encerrar_derruba_a_sessao_e_pode_repetir(pool):
 # --- tentativas -------------------------------------------------------------------------
 
 
+def test_tentativa_comeca_como_falha_e_vira_sucesso_quando_a_senha_bate(pool):
+    with pool.connection() as conn:
+        errada = comecar(conn, "  dono@exemplo.com.br ", "10.0.0.1")
+        certa = comecar(conn, EMAIL, "10.0.0.1")
+        marcar_sucesso(conn, certa)
+        linhas = conn.execute(
+            "SELECT id, email, ip, sucesso FROM tentativas_de_login ORDER BY id"
+        ).fetchall()
+
+    assert linhas == [
+        {"id": errada, "email": EMAIL, "ip": "10.0.0.1", "sucesso": False},
+        {"id": certa, "email": EMAIL, "ip": "10.0.0.1", "sucesso": True},
+    ]
+
+
 def test_cinco_falhas_do_mesmo_ip_bloqueiam_ate_a_mais_antiga_sair_da_janela(pool):
     with pool.connection() as conn:
-        _falhas(conn, 4, ip="10.0.0.1")
-        assert bloqueio(conn, EMAIL, "10.0.0.1") is None
-
+        _falhas(conn, 3, ip="10.0.0.1")
         _falhas(conn, 1, ip="10.0.0.1", ha_minutos=10)
-        segundos = bloqueio(conn, EMAIL, "10.0.0.1")
+        comecar(conn, EMAIL, "10.0.0.1")  # a quinta ainda cabe
 
-        assert segundos is not None and 290 <= segundos <= 300
-        assert bloqueio(conn, "outro@x.com", "10.0.0.2") is None
+        with pytest.raises(Bloqueado) as bloqueado:
+            comecar(conn, EMAIL, "10.0.0.1")
+
+        assert 290 <= bloqueado.value.segundos <= 300
+        assert _contar_em(conn, "ip = '10.0.0.1'") == 5  # a bloqueada não deixa rastro
+        comecar(conn, "outro@x.com", "10.0.0.2")
 
 
 def test_falhas_com_mais_de_15_minutos_e_sucessos_nao_contam(pool):
     with pool.connection() as conn:
         _falhas(conn, 10, ip="10.0.0.1", ha_minutos=16)
         for _ in range(10):
-            registrar(conn, EMAIL, "10.0.0.1", True)
+            marcar_sucesso(conn, comecar(conn, EMAIL, "10.0.0.1"))
         _falhas(conn, 4, ip="10.0.0.1")
 
-        assert bloqueio(conn, EMAIL, "10.0.0.1") is None
+        comecar(conn, EMAIL, "10.0.0.1")  # a quinta falha da janela ainda cabe
 
 
 def test_vinte_falhas_do_mesmo_email_bloqueiam_de_qualquer_ip(pool):
     with pool.connection() as conn:
         for i in range(19):
-            registrar(conn, EMAIL, f"10.0.1.{i}", False)
-        assert bloqueio(conn, EMAIL, "10.0.2.1") is None
+            comecar(conn, EMAIL, f"10.0.1.{i}")
+        comecar(conn, "  dono@exemplo.com.br ", "10.0.1.99")  # a vigésima ainda cabe
 
-        registrar(conn, "  dono@exemplo.com.br ", "10.0.1.99", False)
+        with pytest.raises(Bloqueado) as bloqueado:
+            comecar(conn, " dono@exemplo.com.br", "10.0.2.1")
 
-        segundos = bloqueio(conn, " dono@exemplo.com.br", "10.0.2.1")
-        assert segundos is not None and 890 <= segundos <= 900
-        assert bloqueio(conn, "outro@x.com", "10.0.2.1") is None
+        assert 890 <= bloqueado.value.segundos <= 900
+        comecar(conn, "outro@x.com", "10.0.2.1")
 
 
 def test_limpar_antigas_apaga_so_o_que_passou_de_um_dia(pool):
@@ -233,7 +255,8 @@ async def test_sem_o_cabecalho_o_ip_e_o_da_conexao(client, pool):
     assert tentativa["ip"] == "127.0.0.1"
 
 
-async def test_login_limpa_sessoes_expiradas_e_tentativas_antigas(client, pool):
+async def test_so_o_login_certo_limpa_sessoes_expiradas_e_tentativas_antigas(client, pool):
+    """Limpar custa uma varredura; o login certo é raro, a tentativa errada não."""
     with pool.connection() as conn:
         criar_sessao(conn, EMAIL, horas=1, ip="10.0.0.1", user_agent="ua")
         conn.execute("UPDATE sessoes SET expira_em = now() - interval '1 minute'")
@@ -241,8 +264,13 @@ async def test_login_limpa_sessoes_expiradas_e_tentativas_antigas(client, pool):
 
     await _entrar(client, senha="chute")
 
-    assert _contar(pool, "sessoes") == 0
-    assert _contar(pool, "tentativas_de_login") == 1
+    assert _contar(pool, "sessoes") == 1
+    assert _contar(pool, "tentativas_de_login") == 4
+
+    await _entrar(client)
+
+    assert _contar(pool, "sessoes") == 1  # só a nova
+    assert _contar(pool, "tentativas_de_login") == 2
 
 
 async def test_sessao_expirada_da_401(client, pool):
@@ -371,6 +399,22 @@ async def test_rajada_de_logins_errados_nao_trava_as_outras_rotas(banco, pool, s
     ocupado = next(resp for resp in logins if resp.status_code == 503)
     assert ocupado.json() == {"detail": "Muitas tentativas agora. Tente de novo em instantes."}
     assert ocupado.headers["Retry-After"] == "1"
+
+
+async def test_rajada_do_mesmo_ip_confere_no_maximo_cinco_senhas(client, pool, monkeypatch):
+    """Cada tentativa entra no banco como falha antes do scrypt, e só então a janela é contada,
+    já com ela. Assim as que correm juntas se enxergam, e uma rajada de um IP só não consegue
+    conferir mais senhas que o limite."""
+    espiao = _ConferirEspiao(segundos=0.1)
+    monkeypatch.setattr(rotas_de_acesso, "conferir", espiao)
+
+    respostas = await asyncio.gather(*[_entrar(client, senha="chute") for _ in range(20)])
+
+    estados = [resp.status_code for resp in respostas]
+    assert set(estados) <= {401, 429, 503}, estados
+    assert 1 <= espiao.chamadas <= 5
+    assert estados.count(401) == espiao.chamadas
+    assert _contar(pool, "tentativas_de_login") == espiao.chamadas
 
 
 class _PoolEsgotado:

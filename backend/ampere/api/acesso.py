@@ -19,6 +19,7 @@ import math
 from collections.abc import Callable
 from datetime import datetime
 
+import psycopg
 from fastapi import APIRouter, HTTPException, Request, Response
 from psycopg_pool import ConnectionPool
 from pydantic import BaseModel, Field
@@ -26,7 +27,13 @@ from starlette.concurrency import run_in_threadpool
 
 from ampere.acesso.senha import HASH_FIXO, conferir
 from ampere.acesso.sessoes import criar_sessao, encerrar_sessao, limpar_expiradas
-from ampere.acesso.tentativas import bloqueio, limpar_antigas, normalizar, registrar
+from ampere.acesso.tentativas import (
+    Bloqueado,
+    comecar,
+    limpar_antigas,
+    marcar_sucesso,
+    normalizar,
+)
 from ampere.api.dependencias import Configuracao, IpDoCliente, Pool, SessaoAtual, TokenDaSessao
 from ampere.nucleo.config import Config
 
@@ -63,8 +70,10 @@ def nova_vez_do_login() -> asyncio.Semaphore:
 async def entrar(
     corpo: Credenciais, request: Request, pool: Pool, config: Configuracao, ip: IpDoCliente
 ) -> SessaoAberta:
-    """Primeiro a vez; depois o bloqueio: com tentativas demais, 429 sem registrar tentativa
-    nova. Depois e-mail e senha, com a mesma resposta (e o mesmo tempo) para os dois errados."""
+    """Primeiro a vez. Depois a tentativa entra no banco como falha e a janela é contada com
+    ela: com tentativas demais, 429, e a tentativa é apagada. Depois e-mail e senha, com a
+    mesma resposta (e o mesmo tempo) para os dois errados. Só o login certo volta ao banco:
+    marca o sucesso, abre a sessão e aproveita para limpar o que passou da validade."""
     vez: asyncio.Semaphore = request.app.state.vez_do_login
     try:
         await asyncio.wait_for(vez.acquire(), ESPERA_PELA_VEZ)
@@ -98,27 +107,31 @@ async def eu(sessao: SessaoAtual) -> QuemEsta:
 async def _entrar(
     pool: ConnectionPool, config: Config, email: str, senha: str, ip: str, user_agent: str
 ) -> SessaoAberta:
-    espera = await _no_banco(pool, bloqueio, email, ip)
-    if espera is not None:
+    try:
+        tentativa = await _no_banco(pool, comecar, email, ip)
+    except Bloqueado as bloqueado:
         raise HTTPException(
             status_code=429,
-            detail=f"Muitas tentativas. Tente de novo em {_minutos(espera)}.",
-            headers={"Retry-After": str(espera)},
-        )
-    certo = await run_in_threadpool(_credenciais_conferem, config, email, senha)
-    await _no_banco(pool, _registrar_e_limpar, email, ip, certo)
-    if not certo:
+            detail=f"Muitas tentativas. Tente de novo em {_minutos(bloqueado.segundos)}.",
+            headers={"Retry-After": str(bloqueado.segundos)},
+        ) from None
+    if not await run_in_threadpool(_credenciais_conferem, config, email, senha):
         raise HTTPException(status_code=401, detail="E-mail ou senha incorretos.")
     token, expira_em = await _no_banco(
-        pool, criar_sessao, email, horas=config.sessao_horas, ip=ip, user_agent=user_agent
+        pool, _abrir_sessao, tentativa, email, config.sessao_horas, ip, user_agent
     )
     return SessaoAberta(token=token, email=email, expira_em=expira_em)
 
 
-def _registrar_e_limpar(conn, email: str, ip: str, certo: bool) -> None:
-    registrar(conn, email, ip, certo)
+def _abrir_sessao(
+    conn: psycopg.Connection, tentativa: int, email: str, horas: int, ip: str, user_agent: str
+) -> tuple[str, datetime]:
+    with conn.transaction():
+        marcar_sucesso(conn, tentativa)
+        aberta = criar_sessao(conn, email, horas=horas, ip=ip, user_agent=user_agent)
     limpar_expiradas(conn)
     limpar_antigas(conn)
+    return aberta
 
 
 async def _no_banco[T](pool: ConnectionPool, passo: Callable[..., T], *args, **kwargs) -> T:
