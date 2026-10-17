@@ -185,6 +185,18 @@ def test_fabrica_troca_o_provedor_de_cada_papel_pela_config():
     assert fabrica.trabalhador().model_name == "gpt-5.6-terra"
 
 
+def test_trabalhador_na_openai_desliga_o_raciocinio_para_aceitar_temperatura_zero():
+    # Com raciocínio ligado, os modelos de raciocínio da OpenAI recusam temperature=0 (400).
+    base = {"modelos_falsos": False, "openai_api_key": "x", "groq_api_key": "y"}
+    na_openai = FabricaDeModelos(Config(**base, provedor_trabalhador="openai")).trabalhador()
+    na_groq = FabricaDeModelos(Config(**base, provedor_trabalhador="groq")).trabalhador()
+
+    assert na_openai.reasoning_effort == "none"
+    assert na_openai.temperature == 0
+    assert na_groq.reasoning_effort is None
+    assert na_groq.temperature < 1e-6  # o ChatGroq troca o 0 por 1e-08
+
+
 def test_provedor_desconhecido_e_erro_na_config():
     import pytest
     from pydantic import ValidationError

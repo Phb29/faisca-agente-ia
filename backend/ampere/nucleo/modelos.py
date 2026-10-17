@@ -45,9 +45,8 @@ class FabricaDeModelos:
             # O agente usa tools, e a API de chat completions da OpenAI recusa tools com
             # raciocínio ligado nos modelos de raciocínio (gpt-5.6, gpt-6): lá o gerador
             # roda sem ele.
-            sem_raciocinio = {"reasoning_effort": "none"} if provedor == "openai" else {}
             self._gerador = falso or self._chat(
-                provedor, self.config.modelo_gerador, streaming=True, **sem_raciocinio
+                provedor, self.config.modelo_gerador, streaming=True, **_sem_raciocinio(provedor)
             )
         return self._gerador
 
@@ -64,10 +63,14 @@ class FabricaDeModelos:
             if self.config.modelos_falsos:
                 self._trabalhador = TrabalhadorDeDemonstracao()
             else:
+                # Com raciocínio ligado, os modelos de raciocínio da OpenAI só aceitam a
+                # temperatura padrão e recusam o 0 com erro 400: lá o trabalhador roda sem ele.
+                provedor = self.config.provedor_trabalhador
                 self._trabalhador = self._chat(
-                    self.config.provedor_trabalhador,
+                    provedor,
                     self.config.modelo_trabalhador,
                     temperature=0,
+                    **_sem_raciocinio(provedor),
                 )
         return self._trabalhador
 
@@ -90,3 +93,8 @@ class FabricaDeModelos:
 
             return ChatGroq(model=modelo, api_key=self.config.groq_api_key, **opcoes)
         raise ValueError(f"Provedor desconhecido: {provedor}")
+
+
+def _sem_raciocinio(provedor: Provedor) -> dict[str, str]:
+    """Na OpenAI, desliga o raciocínio; nos outros provedores, não manda nada."""
+    return {"reasoning_effort": "none"} if provedor == "openai" else {}
