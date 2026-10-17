@@ -1,8 +1,11 @@
 """Stream SSE de uma Conversa, protegido pela sessão de login: LISTEN no canal da Conversa e
 repasse de cada Evento como `event: <tipo>` / `data: <json dos dados>`.
 
-Ao conectar, reenvia a última resposta gravada como `message_done` com `reenvio: true`: é
-assim que o front se recupera de uma queda sem perder a resposta. A conexão do pool é usada
+Ao conectar, manda um comentário SSE na hora e reenvia a última resposta gravada como
+`message_done` com `reenvio: true`: é assim que o front se recupera de uma queda sem perder a
+resposta. O comentário existe porque o BFF do Next só repassa os cabeçalhos junto com o
+primeiro byte; numa Conversa nova, sem ele, o front esperaria o ping de 15 s para considerar o
+stream aberto e postar a primeira mensagem. A conexão do pool é usada
 só para essa leitura inicial e devolvida na hora; o LISTEN tem conexão própria, que dura
 enquanto o navegador estiver ouvindo.
 """
@@ -40,6 +43,7 @@ async def stream(config: Configuracao, pool: Pool, cliente_id: ClienteId, conver
 
     async def eventos():
         try:
+            yield ServerSentEvent(comment="conectado")
             if ultima is not None:
                 reenvio = {"mensagem_id": ultima.id, "conteudo": ultima.conteudo, "reenvio": True}
                 yield ServerSentEvent(event="message_done", data=json.dumps(reenvio))

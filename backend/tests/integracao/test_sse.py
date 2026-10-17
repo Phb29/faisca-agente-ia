@@ -116,6 +116,24 @@ async def test_sse_recebe_os_cinco_eventos_na_ordem_e_reenvia_ao_reconectar(
         assert outro.status_code == 404
 
 
+async def test_sse_de_conversa_nova_manda_o_primeiro_byte_na_hora(servidor, sessao):
+    """Conversa nova não tem resposta para reenviar. Sem um primeiro byte, o BFF do Next só
+    manda os cabeçalhos junto com o ping de 15 s, e o front espera esse tempo todo para
+    considerar o stream aberto e postar a primeira mensagem."""
+    async with httpx.AsyncClient(base_url=servidor, timeout=10, headers=sessao) as client:
+        criada = await client.post("/conversas", headers=CLIENTE, json={})
+        conversa_id = criada.json()["id"]
+
+        async with client.stream("GET", f"/conversas/{conversa_id}/stream", headers=CLIENTE) as r:
+            assert r.status_code == 200
+            bytes_ = r.aiter_raw()
+            primeiro = await asyncio.wait_for(anext(bytes_), timeout=2)
+
+    # Um comentário SSE: o EventSource ignora, e nenhum evento falso chega ao front.
+    assert primeiro.startswith(b":")
+    assert b"ping" not in primeiro
+
+
 async def test_sse_aceita_cliente_id_por_query_string(servidor, banco, sessao):
     """O EventSource do navegador não envia headers; a query string faz as vezes dele."""
     async with httpx.AsyncClient(base_url=servidor, timeout=10, headers=sessao) as client:
