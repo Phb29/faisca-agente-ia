@@ -38,8 +38,14 @@ from ampere.evals.relatorio import (
     contexto_base,
     sem_erro,
 )
-from ampere.loja.pedidos import Pedido, Reembolso, StoreDePedidos, StoreDePedidosEmMemoria
-from ampere.loja.seed import PEDIDOS, REEMBOLSOS
+from ampere.loja.pedidos import (
+    Cliente,
+    Pedido,
+    Reembolso,
+    StoreDePedidos,
+    StoreDePedidosEmMemoria,
+)
+from ampere.loja.seed import CLIENTES, PEDIDOS, REEMBOLSOS
 from ampere.memoria.procedural import escrever_procedural
 from ampere.memoria.store import criar_store_em_memoria, namespace_semantica
 from ampere.nucleo.config import Config
@@ -216,7 +222,9 @@ class ExecutorDeCenarios:
 
         grafo = self.composicao.construir_grafo(
             pedidos=StoreDePedidosEmMemoria(
-                [Pedido(**p) for p in PEDIDOS], [Reembolso(**r) for r in REEMBOLSOS]
+                [Pedido(**p) for p in PEDIDOS],
+                [Reembolso(**r) for r in REEMBOLSOS],
+                clientes=[Cliente(**c) for c in CLIENTES],
             ),
             tickets=StoreDeTicketsEmMemoria(),
             checkpointer=InMemorySaver(),

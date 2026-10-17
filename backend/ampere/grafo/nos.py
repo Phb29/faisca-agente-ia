@@ -80,17 +80,16 @@ class NosDoGrafo:
     # --- 1. memória ---------------------------------------------------------------------
 
     def carregar_memoria(self, estado: EstadoDaConversa, runtime: Runtime) -> dict:
+        """As memórias e o nome do cadastro, lidos a cada turno."""
         mensagem = texto_da_ultima_do_cliente(estado["messages"])
-        return dict(
-            inicio_do_turno(
-                carregar_memorias(
-                    runtime.store,
-                    estado["cliente_id"],
-                    mensagem,
-                    conversa_atual=estado.get("conversa_id") or None,
-                )
-            )
+        memorias = carregar_memorias(
+            runtime.store,
+            estado["cliente_id"],
+            mensagem,
+            conversa_atual=estado.get("conversa_id") or None,
         )
+        nome = self.deps.pedidos.nome_do_cliente(estado["cliente_id"])
+        return {**inicio_do_turno(memorias), "cliente_nome": nome}
 
     # --- 2. Guardrail de entrada ----------------------------------------------------------
 
@@ -409,6 +408,7 @@ class NosDoGrafo:
         memorias = estado.get("memorias") or memorias_vazias()
         return SystemMessage(
             prompt.renderizar(
+                nome_do_cliente=estado.get("cliente_nome") or "(não informado)",
                 memoria_procedural=memorias["procedural"] or "(nenhuma)",
                 preferencias_do_cliente=formatar_preferencias(_preferencias(memorias)),
                 memorias=formatar_memorias(memorias),

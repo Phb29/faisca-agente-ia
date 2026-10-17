@@ -300,6 +300,39 @@ def test_pedido_sobre_a_forma_de_falar_vira_preferencia_e_entra_no_prompt_do_tur
     assert secao(prompt, INSTRUCOES).strip() == "(nenhuma)"
 
 
+QUEM_E = "Quem é o Cliente"
+
+
+def test_nome_do_cadastro_entra_no_prompt_do_gerador():
+    cenario = Cenario()
+
+    cenario.turno("oi!")
+
+    prompt = cenario.gerador.chamadas[0][0].content
+    assert secao(prompt, QUEM_E).strip() == "Nome no cadastro: Ana Ribeiro"
+
+
+def test_nome_do_cadastro_entra_no_prompt_do_agente():
+    cenario = Cenario(
+        gerador=[tool_call("consultar_pedido", {"pedido_id": "P2"}), "Seu Pedido foi entregue."],
+        jev=JevFalso(choices={"intencao": "transacao"}),
+    )
+
+    cenario.turno("meu pedido P2 chegou?")
+
+    prompt = cenario.gerador.chamadas[0][0].content
+    assert secao(prompt, QUEM_E).strip() == "Nome no cadastro: Ana Ribeiro"
+
+
+def test_cliente_fora_do_cadastro_fica_sem_nome_no_prompt():
+    cenario = Cenario()
+
+    cenario.turno("oi!", cliente_id="cli_sem_cadastro")
+
+    prompt = cenario.gerador.chamadas[0][0].content
+    assert secao(prompt, QUEM_E).strip() == "Nome no cadastro: (não informado)"
+
+
 def test_prompt_de_sistema_sem_preferencias_diz_nenhuma():
     cenario = Cenario()
 
@@ -428,7 +461,7 @@ def test_nome_e_versao_do_prompt_vao_como_metadata_da_chamada_ao_gerador():
         {**cenario.invocar_config("c1"), "callbacks": [espiao]},
     )
 
-    assert {"prompt_nome": "gerar_resposta", "prompt_versao": "4"}.items() <= espiao.metadata[
+    assert {"prompt_nome": "gerar_resposta", "prompt_versao": "5"}.items() <= espiao.metadata[
         0
     ].items()
 

@@ -24,6 +24,7 @@ class EstadoDaConversa(TypedDict, total=False):
     conversa_id: str
     resumo: str | None
     # do turno
+    cliente_nome: str | None
     memorias: Memorias
     mensagem_sensivel: bool
     bloqueio: str | None

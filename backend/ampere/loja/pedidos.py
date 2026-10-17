@@ -55,6 +55,7 @@ class Reembolso:
 
 
 class StoreDePedidos(Protocol):
+    def nome_do_cliente(self, cliente_id: str) -> str | None: ...
     def listar(self, cliente_id: str) -> list[Pedido]: ...
     def obter(self, cliente_id: str, pedido_id: str) -> Pedido | None: ...
     def reembolsos_recentes(self, cliente_id: str, *, dias: int = 30) -> list[Reembolso]: ...
@@ -66,9 +67,20 @@ class StoreDePedidos(Protocol):
 
 
 class StoreDePedidosEmMemoria:
-    def __init__(self, pedidos: list[Pedido], reembolsos: list[Reembolso] | None = None) -> None:
+    def __init__(
+        self,
+        pedidos: list[Pedido],
+        reembolsos: list[Reembolso] | None = None,
+        *,
+        clientes: list[Cliente] | None = None,
+    ) -> None:
         self._pedidos = list(pedidos)
         self._reembolsos = list(reembolsos or [])
+        self._clientes = {c.id: c for c in clientes or []}
+
+    def nome_do_cliente(self, cliente_id: str) -> str | None:
+        cliente = self._clientes.get(cliente_id)
+        return cliente.nome if cliente else None
 
     def listar(self, cliente_id: str) -> list[Pedido]:
         return [p for p in self._pedidos if p.cliente_id == cliente_id]
@@ -98,13 +110,20 @@ class StoreDePedidosEmMemoria:
 
 
 class StoreDePedidosPostgres:
-    """Lê e grava nas tabelas `pedidos` e `reembolsos` (ver nucleo/migracoes)."""
+    """Lê `clientes` e lê e grava em `pedidos` e `reembolsos` (ver nucleo/migracoes)."""
 
     COLUNAS_DO_PEDIDO = "id, cliente_id, produto, linha, valor, status, data"
     COLUNAS_DO_REEMBOLSO = "pedido_id, cliente_id, valor, criado_em"
 
     def __init__(self, pool: ConnectionPool) -> None:
         self._pool = pool
+
+    def nome_do_cliente(self, cliente_id: str) -> str | None:
+        with self._pool.connection() as conn:
+            linha = conn.execute(
+                "SELECT nome FROM clientes WHERE id = %s", (cliente_id,)
+            ).fetchone()
+        return linha["nome"] if linha else None
 
     def listar(self, cliente_id: str) -> list[Pedido]:
         return self._pedidos(

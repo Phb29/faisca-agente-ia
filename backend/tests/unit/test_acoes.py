@@ -7,7 +7,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from ampere.acoes.reembolso import avaliar_gate, motivo_para_recusar
 from ampere.acoes.ticket import ResumoDoTicket, StoreDeTicketsEmMemoria, abrir_ticket
-from ampere.loja.pedidos import Pedido, Reembolso, StoreDePedidosEmMemoria
+from ampere.loja.pedidos import Cliente, Pedido, Reembolso, StoreDePedidosEmMemoria
 from ampere.nucleo.falsos import JevFalso, ModeloFalso
 
 JANELA = {"janela_dias": 30, "limiar": 0.5}
@@ -39,6 +39,14 @@ def test_store_de_pedidos_so_enxerga_pedidos_do_cliente_atual():
     assert [p.id for p in store.listar("cli_ana")] == ["P1"]
     assert store.obter("cli_ana", "P2") is None
     assert store.obter("cli_bruno", "P2").produto == "Notebook"
+
+
+def test_store_de_pedidos_devolve_o_nome_do_cadastro_do_cliente():
+    ana = Cliente(id="cli_ana", nome="Ana Ribeiro", email="ana@exemplo.com")
+    store = StoreDePedidosEmMemoria(PEDIDOS, clientes=[ana])
+
+    assert store.nome_do_cliente("cli_ana") == "Ana Ribeiro"
+    assert store.nome_do_cliente("cli_desconhecido") is None
 
 
 def test_store_de_pedidos_registra_reembolso_e_lista_os_recentes():

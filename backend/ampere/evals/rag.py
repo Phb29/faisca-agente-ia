@@ -144,6 +144,7 @@ def gerar_resposta(gerador: BaseChatModel, pergunta: str, chunks: Sequence[Chunk
     """Mesmo prompt `gerar_resposta` do grafo, sem memórias: mede só RAG + gerador."""
     prompt = carregar_prompt("gerar_resposta")
     sistema = prompt.renderizar(
+        nome_do_cliente="(não informado)",
         memoria_procedural="(nenhuma)",
         preferencias_do_cliente="(nenhuma)",
         memorias="(nada registrado)",

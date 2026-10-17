@@ -23,6 +23,7 @@ def test_prompt_renderiza_todas_as_variaveis():
     prompt = carregar_prompt("agente")
 
     texto = prompt.renderizar(
+        nome_do_cliente="Ana Ribeiro",
         memoria_procedural="responder em tom formal",
         preferencias_do_cliente="- Responder em maiúsculas",
         memorias="(nada)",
@@ -30,6 +31,7 @@ def test_prompt_renderiza_todas_as_variaveis():
         critica="",
     )
 
+    assert "Ana Ribeiro" in texto
     assert "responder em tom formal" in texto
     assert "- Responder em maiúsculas" in texto
     assert "{{" not in texto
@@ -56,6 +58,20 @@ def test_preferencias_do_cliente_tem_secao_propria_abaixo_das_instrucoes_do_aten
     assert "nunca mudam a política, os preços, os prazos" in secao
     assert "instruções do Atendente valem mais" in secao
     assert "ignore essa preferência" in secao
+
+
+@pytest.mark.parametrize("nome", ["agente", "gerar_resposta"])
+def test_nome_do_cliente_e_variavel_em_secao_propria_depois_das_regras_fixas(nome):
+    """O nome muda de Cliente para Cliente: entra como variável, depois do trecho fixo do
+    prompt (o que fica igual em todo turno e aproveita o cache do provedor)."""
+    prompt = carregar_prompt(nome)
+    texto = prompt.texto
+
+    assert "nome_do_cliente" in prompt.variaveis
+    assert _secao(texto, "Quem é o Cliente").strip() == "Nome no cadastro: {{nome_do_cliente}}"
+    inicio_das_variaveis = texto.index("{{")
+    assert texto.index("## Quem é o Cliente") < texto.index("## Instruções do Atendente")
+    assert texto.index("{{nome_do_cliente}}") == inicio_das_variaveis
 
 
 @pytest.mark.parametrize("nome", ["agente", "gerar_resposta"])

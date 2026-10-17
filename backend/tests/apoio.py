@@ -9,7 +9,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from ampere.acoes.ticket import ResumoDoTicket, StoreDeTicketsEmMemoria
 from ampere.grafo.construtor import Dependencias, construir_grafo
-from ampere.loja.pedidos import Pedido, Reembolso, StoreDePedidosEmMemoria
+from ampere.loja.pedidos import Cliente, Pedido, Reembolso, StoreDePedidosEmMemoria
 from ampere.memoria.salvar import MemoriasExtraidas
 from ampere.memoria.store import criar_store_em_memoria
 from ampere.nucleo.config import Config
@@ -48,6 +48,7 @@ PEDIDOS = [
         data=date(2026, 8, 10),
     ),
 ]
+CLIENTES = [Cliente(id="cli_ana", nome="Ana Ribeiro", email="ana@exemplo.com")]
 MEMORIAS = MemoriasExtraidas(fatos=["Tem um notebook Vega 15"], episodio="Perguntou sobre garantia")
 TICKET = ResumoDoTicket(resumo="Cliente quer humano", categoria="outro", prioridade="media")
 
@@ -76,7 +77,7 @@ class Cenario:
             self.config, gerador=self.gerador, trabalhador=self.trabalhador, jev=self.jev
         )
         self.retriever = RetrieverFalso([CHUNK_GARANTIA])
-        self.pedidos = StoreDePedidosEmMemoria(PEDIDOS, reembolsos)
+        self.pedidos = StoreDePedidosEmMemoria(PEDIDOS, reembolsos, clientes=CLIENTES)
         self.tickets = StoreDeTicketsEmMemoria()
         self.store = criar_store_em_memoria(embed_falso)
         self.checkpointer = InMemorySaver()
