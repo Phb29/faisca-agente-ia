@@ -4,14 +4,14 @@ Três evals, três CSVs em `dados/`, nenhum roda no pytest porque todos gastam m
 
 Cada rodada completa é gravada como uma Execução na tabela `execucoes_de_eval` (`execucoes.py`), com o contexto (modelos, versões dos prompts, variante no ar), os números de destaque e cada caso, e é isso que a Tela de Avaliação (`/avaliacao`) projeta; `--sem-salvar` roda sem gravar, e rodadas parciais (`--amostra N`) nunca são gravadas. Em produção, rode de dentro do worker do Railway, que enxerga o banco e tem as chaves dos modelos: `railway ssh --service worker -- ampere-evals agente`. A aba Dados da tela mostra os três goldens, lidos destes mesmos CSVs por `conjuntos.py`, com os ids e grupos das execuções e, no juiz, o conjunto de cada rótulo (treino, dev ou teste) pela mesma divisão da calibração. A tela também dispara uma amostra ao vivo de 3 casos sorteados de grupos diferentes (`ao_vivo.py`): um job `eval` na mesma fila do chat, que roda cada caso soltando o nome de cada fase (os nós do grafo, no agente) e grava cada caso antes de avisar. O RAG completo em produção gasta a cota da Groq que o trabalhador do chat usa, então rode com folga antes da aula.
 
-Como rodar, a partir de `backend/`, com Qdrant ingerido (`uv run ampere ingest --todas`) e as chaves no `.env`:
+Como rodar, a partir da raiz do repositório (é de lá que o `.env` com as chaves é lido), com o Qdrant ingerido (`uv run --project backend ampere ingest --todas`):
 
 ```bash
-uv run ampere-evals rag                  # todas as variantes; geração + juiz só na variante do .env
-uv run ampere-evals rag --so-retrieval   # só Recall@5 e MRR, sem gastar gerador nem juiz
-uv run ampere-evals rag --amostra 10     # as 10 primeiras perguntas
-uv run ampere-evals agente               # um turno por cenário, tabela por dimensão e veredito
-uv run ampere-evals agente --amostra 5
-uv run ampere-evals agente --sem-salvar  # roda sem gravar a execução no banco
-uv run ampere-evals calibracao           # TPR, TNR, matriz, desacordos e Rogan-Gladen com IC
+uv run --project backend ampere-evals rag                  # todas as variantes; geração + juiz só na variante do .env
+uv run --project backend ampere-evals rag --so-retrieval   # só Recall@5 e MRR, sem gastar gerador nem juiz
+uv run --project backend ampere-evals rag --amostra 10     # as 10 primeiras perguntas
+uv run --project backend ampere-evals agente               # um turno por cenário, tabela por dimensão e veredito
+uv run --project backend ampere-evals agente --amostra 5
+uv run --project backend ampere-evals agente --sem-salvar  # roda sem gravar a execução no banco
+uv run --project backend ampere-evals calibracao           # TPR, TNR, matriz, desacordos e Rogan-Gladen com IC
 ```

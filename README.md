@@ -46,27 +46,73 @@ flowchart LR
 
 A api e o worker rodam a mesma imagem Docker com comandos diferentes e usam um pool de conexões. Não há Redis nem broker: a fila, a idempotência do `message_id`, o aviso que acorda o worker e o stream de eventos (LISTEN/NOTIFY → SSE) vivem no Postgres ([ADR 0004](docs/adr/0004-fila-e-stream-no-postgres.md)). O SSE entrega seis eventos: `token`, `tool_call`, `etapa` (um por nó do grafo, para o painel de bastidores do chat), `approval_required`, `message_done` e `error`. Cartão, CPF, CVV e senha são mascarados na api, antes de qualquer gravação.
 
-## Como rodar
+## Como subir localmente
+
+**Pré-requisitos:** [Docker](https://docs.docker.com/get-docker/) com Compose v2 (Docker Desktop no Mac e no Windows), [uv](https://docs.astral.sh/uv/getting-started/installation/) 0.8 ou mais novo (`uv self update` atualiza; ele baixa sozinho o Python 3.12 que o backend exige; não precisa instalar Python), [Node.js](https://nodejs.org/) 22 ou mais novo, com o npm que vem junto, e Git. Reserve uns 2 GB de disco: imagens do Postgres e do Qdrant, dependências do backend e do frontend e os modelos de embedding que o primeiro `ingest` baixa (perto de 400 MB).
+
+**Chaves:** sem nenhuma, o sistema roda inteiro no modo demonstração (`MODELOS_FALSOS=true`, mais abaixo). Com os modelos de verdade e os provedores padrão do [.env.example](.env.example), são três obrigatórias:
+
+| Variável | Para quê | Obrigatória? | Onde pegar |
+|---|---|---|---|
+| `OPENAI_API_KEY` | gerador (o chat) e juiz (os evals) | sim | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| `GROQ_API_KEY` | trabalhador: memória, resumos e self-querying | sim, enquanto `PROVEDOR_TRABALHADOR=groq` (o padrão); sem ela o worker não sobe | [console.groq.com/keys](https://console.groq.com/keys) |
+| `TYPESAFE_API_KEY` | o Jev: Guardrails, Roteador e Gate de Aprovação | sim | [typesafe.ai](https://typesafe.ai) |
+| `LANGFUSE_PUBLIC_KEY` e `LANGFUSE_SECRET_KEY` | traces e custo por chamada | não: sem elas o tracing desliga e o resto funciona igual | [cloud.langfuse.com](https://cloud.langfuse.com), nas configurações do projeto |
+
+Quem não tem conta na Groq pode pôr o trabalhador na OpenAI: `PROVEDOR_TRABALHADOR=openai` e um modelo da OpenAI em `MODELO_TRABALHADOR` (o mesmo `gpt-6-luna` do gerador serve).
+
+**Passo a passo**, sempre a partir da raiz do repositório:
 
 ```bash
-cp .env.example .env                      # sem chaves? MODELOS_FALSOS=true liga o modo demonstração
-docker compose up -d postgres qdrant      # Postgres na 5439, Qdrant na 6333
+# 1. Variáveis: preencha as chaves no .env, ou ponha MODELOS_FALSOS=true
+cp .env.example .env
+cp frontend/.env.example frontend/.env.local
 
-cd backend && uv sync
-uv run ampere migrate                     # tabelas da fila, das Conversas e do LangGraph
-uv run ampere seed                        # três Clientes, Pedidos e um Reembolso recente
-uv run ampere ingest                      # Base de Conhecimento no Qdrant (ou --todas: as seis coleções)
-uv run ampere api                         # http://localhost:8000
-uv run ampere worker                      # em outro terminal
+# 2. Login: crie a senha e copie o hash para LOGIN_SENHA_HASH no .env,
+#    junto com o seu e-mail em LOGIN_EMAIL (a senha em si não fica em lugar nenhum)
+uv run --project backend ampere hash-senha    # pede a senha duas vezes e imprime scrypt:...
 
-cd ../frontend && npm install && npm run dev   # http://localhost:3000 (chat) e /atendente
+# 3. Infra: Postgres na 5439 e Qdrant na 6333
+docker compose up -d postgres qdrant
+
+# 4. Banco e Base de Conhecimento
+uv run --project backend ampere migrate       # tabelas da fila, das Conversas, do login e do LangGraph
+uv run --project backend ampere seed          # três Clientes, Pedidos e um Reembolso recente
+uv run --project backend ampere ingest        # Base de Conhecimento no Qdrant (ou --todas: as seis coleções)
+
+# 5. api e worker, cada um no seu terminal
+uv run --project backend ampere api           # http://localhost:8000
+uv run --project backend ampere worker
+
+# 6. frontend, em outro terminal
+cd frontend && npm install && npm run dev     # http://localhost:3000
 ```
 
-Ou tudo de uma vez, incluindo api, worker e frontend em containers: `docker compose up --build`. Nesse caso rode `migrate`, `seed` e `ingest` de dentro do container: `docker compose run --rm api ampere migrate` (e o mesmo para `seed` e `ingest`). Todas as variáveis estão comentadas em [.env.example](.env.example). Com `MODELOS_FALSOS=true` o sistema roda inteiro sem nenhuma chave: dublês do gerador, do trabalhador e do Jev reagem à mensagem por palavras-chave, então dá para demonstrar dúvida, consulta de Pedido, Reembolso com e sem Atendente, escalada e bloqueios mesmo se a OpenAI ou o Jev caírem no dia (rode o `ingest` no mesmo modo, porque o embedder também vira falso).
+Abra `http://localhost:3000`: sem sessão, a página leva para `/entrar`, onde vale o e-mail de `LOGIN_EMAIL` com a senha que você digitou no `hash-senha`. Depois do login, escolha um dos Clientes de exemplo (Ana, Bruno ou Carla) e converse; a Central do Atendente fica em `/atendente` e a Tela de Avaliação em `/avaliacao`. O primeiro `uv run` cria o ambiente do backend e instala tudo sozinho, então demora um pouco mais; o primeiro `ingest` baixa os modelos de embedding.
 
-**Testes:** `cd backend && uv run pytest`. Unitários e o teste do grafo inteiro rodam sem nada; os de integração (`-m integracao`) precisam de `DATABASE_URL` e `QDRANT_URL` apontando para o compose. Nenhum teste gasta token nem precisa de chave, e o [CI](.github/workflows/ci.yml) roda tudo assim. A regra de acoplamento da [ADR 0005](docs/adr/0005-organizacao-por-conceito.md) também é um teste. Frontend: `npm run lint && npx tsc --noEmit && npm run build`.
+Por que da raiz com `--project backend`: os comandos `ampere` leem o `.env` da pasta onde rodam. Rodando de dentro de `backend/`, o `.env` da raiz fica de fora, a api sobe com o login desligado (ninguém entra) e o worker cai na hora por falta das chaves. Se aparecer `Login desligado` no log da api ou `api_key ... must be set` no worker, é isso.
 
-**Evals** (não são testes, ficam fora do pytest e gastam token): `uv run ampere-evals rag` (Recall@5 e MRR por coleção, com e sem ColBERT e self-querying, mais fidelidade e relevância pelo juiz), `uv run ampere-evals agente` (intenção, Ação e desfecho por código, veredito e crítica do juiz) e `uv run ampere-evals calibracao` (TPR, TNR, matriz de confusão, desacordos e Rogan-Gladen com bootstrap contra os rótulos humanos). Dados em [backend/ampere/evals/dados](backend/ampere/evals/dados).
+**Portas:** frontend na 3000, api na 8000, Postgres na 5439 (e não na 5432, para não brigar com um Postgres instalado na máquina) e Qdrant na 6333, com o painel em `http://localhost:6333/dashboard`. O compose abre o Postgres, o Qdrant e a api só no `127.0.0.1`, fora da rede local. Se a 3000 estiver ocupada, `npm run dev -- -p 3010`. Se a 8000 estiver, `uv run --project backend ampere api --port 8010` e `API_INTERNA=http://localhost:8010` no `frontend/.env.local`. Se a 5439 estiver, `POSTGRES_PORT=5440` no `.env` e a mesma porta no `DATABASE_URL`.
+
+**`BFF_SEGREDO`:** no local pode ficar vazio. Se preencher (gere com `openssl rand -base64 32`), ponha o mesmo valor no `.env` da raiz e no `frontend/.env.local`; se a api tiver um segredo e o frontend não tiver o mesmo, toda chamada volta 403 `Origem não autorizada`.
+
+**Modo demonstração:** com `MODELOS_FALSOS=true` o sistema roda inteiro sem nenhuma chave: dublês do gerador, do trabalhador e do Jev reagem à mensagem por palavras-chave, então dá para demonstrar dúvida, consulta de Pedido, Reembolso com e sem Atendente, escalada e bloqueios mesmo se a OpenAI ou o Jev caírem no dia. Rode o `ingest` no mesmo modo, porque o embedder também vira falso. A coleção do Qdrant tem o mesmo nome nos dois modos, então ao voltar para os modelos de verdade rode o `ingest` de novo, senão a busca usa os vetores falsos.
+
+**Tudo em containers:** `docker compose up --build` sobe também a api, o worker e o frontend, lendo o mesmo `.env` da raiz. Nesse caso rode `migrate`, `seed` e `ingest` de dentro do container: `docker compose run --rm api ampere migrate` (e o mesmo para `seed` e `ingest`). As imagens ocupam perto de 3 GB a mais (a do backend já traz os modelos de embedding). O frontend do container roda em modo de produção, com o cookie da sessão `Secure`: o Chrome aceita esse cookie em `http://localhost`, mas o Safari recusa e devolve você para `/entrar` depois do login. No Safari, use o frontend do `npm run dev`.
+
+**Recomeçar do zero:** `docker compose down -v` apaga o Postgres e o Qdrant (Conversas, memória, Tickets, sessões e a Base de Conhecimento); depois repita `migrate`, `seed` e `ingest`. Para derrubar todas as sessões abertas, troque a senha (gere outro hash) ou o e-mail e reinicie a api. Errou a senha demais? O login aceita 5 falhas por IP e 20 por e-mail a cada 15 minutos; espere a janela passar ou limpe as tentativas com `docker compose exec postgres psql -U ampere -c "DELETE FROM tentativas_de_login"`.
+
+Todas as variáveis estão comentadas em [.env.example](.env.example) e [frontend/.env.example](frontend/.env.example).
+
+**Testes:** `cd backend && uv run pytest`, de dentro de `backend/` de propósito, para o `.env` da raiz e as suas chaves ficarem de fora. Unitários e o teste do grafo inteiro rodam sem nada; os de integração (`-m integracao`) pulam sozinhos sem `DATABASE_URL` no ambiente e, com o compose no ar, rodam com `DATABASE_URL=postgresql://ampere:ampere@localhost:5439/ampere QDRANT_URL=http://localhost:6333 MODELOS_FALSOS=true uv run pytest`. Nenhum teste gasta token nem precisa de chave, e o [CI](.github/workflows/ci.yml) roda tudo assim. A regra de acoplamento da [ADR 0005](docs/adr/0005-organizacao-por-conceito.md) também é um teste. Frontend: `npm run lint && npx tsc --noEmit && npm run build`.
+
+**Evals** (não são testes, ficam fora do pytest e gastam token; rode da raiz, para o `.env` com as chaves valer): `uv run --project backend ampere-evals rag` (Recall@5 e MRR por coleção, com e sem ColBERT e self-querying, mais fidelidade e relevância pelo juiz), `uv run --project backend ampere-evals agente` (intenção, Ação e desfecho por código, veredito e crítica do juiz) e `uv run --project backend ampere-evals calibracao` (TPR, TNR, matriz de confusão, desacordos e Rogan-Gladen com bootstrap contra os rótulos humanos). Dados em [backend/ampere/evals/dados](backend/ampere/evals/dados).
+
+## Segurança
+
+O `.env` e o `frontend/.env.local` guardam as suas chaves e já estão no `.gitignore`: nunca faça commit deles, e se uma chave vazar, revogue no painel do provedor. Cada mensagem do chat e cada amostra da Tela de Avaliação gasta tokens das suas contas, e é o login que protege esse gasto: use uma senha forte, só sua.
+
+O que está no repositório é feito para a sua máquina. Antes de pôr no ar: gere uma senha e um hash novos, ponha um `BFF_SEGREDO` aleatório e igual na api e no frontend, preencha `ORIGEM_PUBLICA` (frontend) e `ORIGENS_PERMITIDAS` (api) com o domínio do frontend, deixe a api, o Postgres e o Qdrant sem endereço público (só o frontend fica exposto) e troque a senha `ampere` do Postgres. O `docker-compose.yml` não serve para servidor como está: a senha do banco é fixa e o Qdrant não tem chave. O caminho de produção, com essas variáveis por serviço, está em [docs/railway.md](docs/railway.md).
 
 ## Custo por papel
 
