@@ -61,5 +61,3 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run lint
       - run: npm run build
-        env:
-          NEXT_PUBLIC_API_URL: http://localhost:8000

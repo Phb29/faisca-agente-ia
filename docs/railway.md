@@ -55,14 +55,16 @@ Quando uma mudança traz migração nova, o deploy segue a ordem api, worker e f
 | `GROQ_API_KEY` | | sim | | trabalhador |
 | `TYPESAFE_API_KEY` | | sim | | Jev |
 | `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` | | sim | | sem elas o tracing é no-op |
-| `LOGIN_EMAIL` | sim | | | a conta que entra; `dono@exemplo.com.br` |
+| `LOGIN_EMAIL` | sim | | | o e-mail da única conta que entra |
 | `LOGIN_SENHA_HASH` | sim | | | só o hash, gerado com `uv run --project backend ampere hash-senha`; a senha não fica no Railway |
 | `SESSAO_HORAS` | sim | | | validade da Sessão; `12` |
 | `ORIGENS_PERMITIDAS` | sim | | | CORS, em JSON: `["https://<domínio do frontend>"]` |
+| `BFF_SEGREDO` | sim | | sim | o mesmo valor nas duas pontas, gerado com `openssl rand -base64 32`; com ele, a api recusa quem não é o frontend |
 | `EMBEDDER`, `CHUNKER`, `RERANKER`, `SELF_QUERYING` | sim | sim | | precisam ser iguais nos dois e iguais aos usados no `ingest` |
 | `LIMIAR_*`, `VALOR_LIMITE_REEMBOLSO`, `LIMITE_MENSAGENS_RESUMO` | | sim | | opcionais, ver `.env.example` |
 | `PROVEDOR_*`, `MODELO_*` | | sim | | opcionais; provedor e modelo de cada papel, ver `.env.example` |
 | `API_INTERNA` | | | sim | a api pela rede interna: `http://api.railway.internal:8000` |
+| `ORIGEM_PUBLICA` | | | sim | o domínio público do frontend, como `https://seu-frontend.up.railway.app` |
 
 Use variáveis compartilhadas do ambiente para `DATABASE_URL`, `QDRANT_URL`, `EMBEDDER` e `CHUNKER`, referenciadas na api e no worker, para não divergirem. Pelo CLI: `railway variable set OPENAI_API_KEY=... --service worker`.
 

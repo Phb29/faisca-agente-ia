@@ -121,7 +121,7 @@ def test_marca_da_credencial_e_curta_e_ignora_caixa_e_espacos():
 
     assert len(marca) == 16 and int(marca, 16) >= 0
     assert marca == hashlib.sha256(f"{EMAIL}\n{HASH}".encode()).hexdigest()[:16]
-    assert marca_da_credencial(" dono@exemplo.com.br ", f" {HASH}\n") == marca
+    assert marca_da_credencial(" Dono@Exemplo.com.BR ", f" {HASH}\n") == marca
     assert marca_da_credencial(EMAIL, gerar_hash(SENHA)) != marca
     assert marca_da_credencial("outro@exemplo.com.br", HASH) != marca
 
@@ -143,7 +143,7 @@ def test_encerrar_derruba_a_sessao_e_pode_repetir(pool):
 
 def test_tentativa_comeca_como_falha_e_vira_sucesso_quando_a_senha_bate(pool):
     with pool.connection() as conn:
-        errada = comecar(conn, "  dono@exemplo.com.br ", "10.0.0.1")
+        errada = comecar(conn, "  Dono@Exemplo.com.BR ", "10.0.0.1")
         certa = comecar(conn, EMAIL, "10.0.0.1")
         marcar_sucesso(conn, certa)
         linhas = conn.execute(
@@ -184,10 +184,10 @@ def test_vinte_falhas_do_mesmo_email_bloqueiam_de_qualquer_ip(pool):
     with pool.connection() as conn:
         for i in range(19):
             comecar(conn, EMAIL, f"10.0.1.{i}")
-        comecar(conn, "  dono@exemplo.com.br ", "10.0.1.99")  # a vigésima ainda cabe
+        comecar(conn, "  Dono@Exemplo.com.BR ", "10.0.1.99")  # a vigésima ainda cabe
 
         with pytest.raises(Bloqueado) as bloqueado:
-            comecar(conn, " dono@exemplo.com.br", "10.0.2.1")
+            comecar(conn, " DONO@exemplo.com.br", "10.0.2.1")
 
         assert 890 <= bloqueado.value.segundos <= 900
         comecar(conn, "outro@x.com", "10.0.2.1")
@@ -232,7 +232,7 @@ def test_limpar_antigas_apaga_falhas_de_mais_de_um_dia_e_sucessos_de_mais_de_30(
 
 
 def _app(banco, pool, **ajustes):
-    login = {"login_email": "dono@exemplo.com.br", "login_senha_hash": HASH}
+    login = {"login_email": "Dono@Exemplo.com.br", "login_senha_hash": HASH}
     config = Config(database_url=banco, modelos_falsos=True, **{**login, **ajustes})
     return criar_app(config, pool=pool, verificar_qdrant=lambda: True)
 
@@ -269,7 +269,7 @@ def _contar(pool, tabela: str, onde: str = "true") -> int:
 
 
 async def test_login_certo_devolve_token_e_cria_sessao(client, pool):
-    resp = await _entrar(client, email="  dono@exemplo.com.br ")
+    resp = await _entrar(client, email="  DONO@exemplo.com.br ")
 
     assert resp.status_code == 200
     corpo = resp.json()
@@ -384,7 +384,7 @@ async def test_trocar_a_senha_ou_o_email_da_conta_derruba_as_sessoes_abertas(ban
                 resp = await client.get(rota, headers=bearer)
                 assert (resp.status_code, resp.json()) == (401, SEM_SESSAO), (troca, rota)
 
-    mesma_conta = {"login_email": " dono@exemplo.com.br ", "login_senha_hash": f" {HASH} "}
+    mesma_conta = {"login_email": " DONO@exemplo.com.br ", "login_senha_hash": f" {HASH} "}
     async with _cliente(_app(banco, pool, **mesma_conta)) as client:
         assert (await client.get("/acesso/eu", headers=bearer)).status_code == 200
 
