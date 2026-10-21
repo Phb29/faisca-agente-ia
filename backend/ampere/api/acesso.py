@@ -2,8 +2,8 @@
 
 O navegador não fala com a api: o frontend repassa cada chamada, guarda o token num cookie
 `HttpOnly` dele e o manda aqui como `Authorization: Bearer`, junto com o IP do navegador em
-`X-Ip-Do-Cliente` (ver docs/superpowers/specs/2026-10-16-login.md). A senha nunca vai para o
-log.
+`X-Ip-Do-Cliente` (ver docs/adr/0010-login-com-sessao-e-frontend-como-bff.md). A senha nunca
+vai para o log.
 
 `entrar` é assíncrona de propósito. Cada scrypt usa 32 MiB e leva perto de um décimo de
 segundo, então só `LOGINS_SIMULTANEOS` logins correm juntos por processo. Quem não consegue a
