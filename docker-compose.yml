@@ -1,6 +1,8 @@
 # Sobe tudo: `docker compose up --build`. Só a infra: `docker compose up -d postgres qdrant`.
 # As chaves (OPENAI_API_KEY, GROQ_API_KEY, TYPESAFE_API_KEY, LANGFUSE_*) vêm do .env ou do
 # ambiente; sem nenhuma delas, deixe MODELOS_FALSOS=true para rodar sem gastar token.
+# Feito para o desenvolvimento: a senha do Postgres é fixa e o Qdrant não tem chave, por isso
+# as portas só abrem no 127.0.0.1 da sua máquina. Não suba este arquivo como está num servidor.
 
 x-backend: &backend
   build: ./backend
@@ -20,6 +22,7 @@ x-backend: &backend
     LOGIN_EMAIL: ${LOGIN_EMAIL:-}
     LOGIN_SENHA_HASH: ${LOGIN_SENHA_HASH:-}
     SESSAO_HORAS: ${SESSAO_HORAS:-12}
+    BFF_SEGREDO: ${BFF_SEGREDO:-}
   restart: unless-stopped
   depends_on:
     postgres:
@@ -35,7 +38,7 @@ services:
       POSTGRES_PASSWORD: ampere
       POSTGRES_DB: ampere
     ports:
-      - "${POSTGRES_PORT:-5439}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5439}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -47,8 +50,8 @@ services:
   qdrant:
     image: qdrant/qdrant:v1.19.1
     ports:
-      - "6333:6333"
-      - "6334:6334"
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
@@ -62,7 +65,7 @@ services:
     <<: *backend
     command: ampere api
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     healthcheck:
       test:
         [
@@ -85,6 +88,8 @@ services:
       context: ./frontend
     environment:
       API_INTERNA: http://api:8000
+      # O mesmo segredo da api, lido do .env da raiz; vazio nas duas pontas também funciona.
+      BFF_SEGREDO: ${BFF_SEGREDO:-}
     ports:
       - "3000:3000"
     depends_on:
