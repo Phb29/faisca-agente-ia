@@ -7,7 +7,7 @@ tipo: politica
 
 # Devolução de acessórios
 
-Esta política cobre a devolução com reembolso do fone Ampère Beat, do carregador Ampère Flash 65W e da capa Ampère Shell, e complementa a política geral de devolução.
+Esta política cobre a devolução com reembolso do fone Faísca Beat, do carregador Faísca Flash 65W e da capa Faísca Shell, e complementa a política geral de devolução.
 
 ## Prazos para pedir
 
@@ -17,7 +17,7 @@ Arrependimento: até 7 dias corridos após o recebimento. Defeito de fabricaçã
 
 Para acessórios com valor de até R$ 80,00, a Loja pode dispensar o envio físico do produto e liberar o reembolso direto, pedindo apenas uma foto do item. Nesse caso o Cliente é orientado a descartar o produto em um ponto de coleta de eletrônicos. A decisão de dispensar o envio é da Loja e é informada na resposta à solicitação. Acessórios acima de R$ 80,00 são sempre enviados de volta pelos Correios com código de postagem gratuito.
 
-## Fone Ampère Beat
+## Fone Faísca Beat
 
 Por higiene, o fone Beat só pode ser devolvido por arrependimento se estiver lacrado. Um fone aberto e usado só é aceito na devolução por defeito confirmado. Na devolução por defeito, o fone deve ser enviado com o estojo e com todas as pontas de silicone.
 

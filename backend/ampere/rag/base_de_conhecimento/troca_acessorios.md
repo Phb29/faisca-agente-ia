@@ -7,7 +7,7 @@ tipo: politica
 
 # Troca de acessórios
 
-Esta política cobre os acessórios Ampère: o fone Ampère Beat, o carregador Ampère Flash 65W e a capa Ampère Shell. Ela complementa a política geral de troca e prevalece sobre ela quando houver diferença.
+Esta política cobre os acessórios Faísca: o fone Faísca Beat, o carregador Faísca Flash 65W e a capa Faísca Shell. Ela complementa a política geral de troca e prevalece sobre ela quando houver diferença.
 
 ## Prazos
 
@@ -15,17 +15,17 @@ A troca por arrependimento pode ser pedida em até 7 dias corridos após o receb
 
 ## Troca por cor ou modelo
 
-A capa Ampère Shell é o único produto da Loja que aceita troca por preferência: o Cliente pode trocar a cor ou o modelo de celular da capa em até 7 dias corridos, desde que a capa esteja sem uso e na embalagem. O fone Beat e o carregador Flash não têm troca por preferência.
+A capa Faísca Shell é o único produto da Loja que aceita troca por preferência: o Cliente pode trocar a cor ou o modelo de celular da capa em até 7 dias corridos, desde que a capa esteja sem uso e na embalagem. O fone Beat e o carregador Flash não têm troca por preferência.
 
 ## Envio antecipado
 
 Para acessórios com valor de até R$ 150,00, a Loja envia o produto novo antes de receber o defeituoso. O Cliente recebe o novo item e tem 10 dias corridos para postar o item com defeito usando o código de postagem gratuito. Se o item não for postado nesse prazo, o valor do produto novo é cobrado no mesmo meio de pagamento do Pedido. Para acessórios acima de R$ 150,00, a troca segue o fluxo normal: o Cliente envia primeiro e o novo item sai após a análise técnica, que para acessórios leva no máximo 5 dias úteis.
 
-## Fone Ampère Beat
+## Fone Faísca Beat
 
 Por questão de higiene, o fone Beat só é aceito na troca por arrependimento se estiver lacrado. Fone aberto e usado só pode ser trocado por defeito. Na troca por defeito, o fone precisa ser enviado com o estojo de carregamento e com todas as pontas de silicone.
 
-## Carregador Ampère Flash 65W
+## Carregador Faísca Flash 65W
 
 O carregador Flash é trocado por defeito quando não carrega, aquece acima do normal ou tem o cabo rompido sem sinal de dobra forçada. Cabo com marcas de mordida, corte ou dobra não é defeito de fabricação.
 

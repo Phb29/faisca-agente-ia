@@ -7,7 +7,7 @@ tipo: procedimento
 
 # Como pedir a segunda via do boleto
 
-Este procedimento explica como o Cliente gera uma segunda via do boleto de um Pedido da Ampère Eletrônicos, o que fazer quando o boleto venceu e como confirmar o pagamento. As regras de prazo estão na política de pagamento.
+Este procedimento explica como o Cliente gera uma segunda via do boleto de um Pedido da Faísca Eletrônicos, o que fazer quando o boleto venceu e como confirmar o pagamento. As regras de prazo estão na política de pagamento.
 
 ## Quando é possível
 

@@ -7,7 +7,7 @@ tipo: politica
 
 # Política geral de frete e entrega
 
-Esta política vale para todos os Pedidos da Ampère Eletrônicos, salvo regra diferente na política de frete de uma linha.
+Esta política vale para todos os Pedidos da Faísca Eletrônicos, salvo regra diferente na política de frete de uma linha.
 
 ## Modalidades
 

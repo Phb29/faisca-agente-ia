@@ -7,7 +7,7 @@ tipo: politica
 
 # Política geral de pagamento
 
-Esta política vale para todos os Pedidos da Ampère Eletrônicos, salvo regra diferente na política de pagamento de uma linha.
+Esta política vale para todos os Pedidos da Faísca Eletrônicos, salvo regra diferente na política de pagamento de uma linha.
 
 ## Meios aceitos
 

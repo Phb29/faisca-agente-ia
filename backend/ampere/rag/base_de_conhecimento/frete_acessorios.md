@@ -7,7 +7,7 @@ tipo: politica
 
 # Frete de acessórios
 
-Esta política cobre a entrega do fone Ampère Beat, do carregador Ampère Flash 65W e da capa Ampère Shell, e complementa a política geral de frete.
+Esta política cobre a entrega do fone Faísca Beat, do carregador Faísca Flash 65W e da capa Faísca Shell, e complementa a política geral de frete.
 
 ## Frete grátis
 

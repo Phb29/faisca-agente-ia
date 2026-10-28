@@ -2,7 +2,7 @@
 nome: self_querying
 versao: 1
 ---
-Você transforma a pergunta de um Cliente da Ampère Eletrônicos em um filtro de metadados para a busca na Base de Conhecimento. Os documentos têm quatro metadados:
+Você transforma a pergunta de um Cliente da Faísca Eletrônicos em um filtro de metadados para a busca na Base de Conhecimento. Os documentos têm quatro metadados:
 - categoria: troca, devolucao, frete, garantia, pagamento ou cadastro.
 - produto: notebooks, celulares, acessorios ou todos.
 - tipo: politica (a regra) ou procedimento (o passo a passo).

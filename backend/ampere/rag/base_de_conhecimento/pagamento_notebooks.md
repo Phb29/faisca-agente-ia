@@ -7,7 +7,7 @@ tipo: politica
 
 # Pagamento de notebooks
 
-Esta política cobre os Pedidos com os notebooks Ampère Vega 15 e Ampère Orion 14 e complementa a política geral de pagamento, com condições melhores por causa do valor maior desses produtos.
+Esta política cobre os Pedidos com os notebooks Faísca Vega 15 e Faísca Orion 14 e complementa a política geral de pagamento, com condições melhores por causa do valor maior desses produtos.
 
 ## Parcelamento
 
@@ -31,7 +31,7 @@ O boleto para notebooks segue as regras gerais (vencimento em 2 dias úteis, com
 
 ## Programa de troca de notebook usado
 
-Ao comprar um notebook Ampère, o Cliente pode enviar um notebook usado de qualquer marca e receber um crédito de R$ 300,00 a R$ 800,00, definido após avaliação do aparelho na central. O crédito é aplicado como reembolso parcial no meio de pagamento do Pedido em até 10 dias úteis após a avaliação. O notebook usado deve ligar e ter a tela funcionando para ser aceito.
+Ao comprar um notebook Faísca, o Cliente pode enviar um notebook usado de qualquer marca e receber um crédito de R$ 300,00 a R$ 800,00, definido após avaliação do aparelho na central. O crédito é aplicado como reembolso parcial no meio de pagamento do Pedido em até 10 dias úteis após a avaliação. O notebook usado deve ligar e ter a tela funcionando para ser aceito.
 
 ## Estorno
 

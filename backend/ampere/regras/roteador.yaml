@@ -18,7 +18,7 @@ versao: 2
 regras:
   intencao:
     pergunta: >-
-      Qual é a intenção da mensagem do Cliente no suporte da Ampère Eletrônicos? Considere a
+      Qual é a intenção da mensagem do Cliente no suporte da Faísca Eletrônicos? Considere a
       última resposta do chatbot quando a mensagem for uma continuação, e o resumo das
       Conversas anteriores quando ela se referir a algo do passado.
     opcoes:

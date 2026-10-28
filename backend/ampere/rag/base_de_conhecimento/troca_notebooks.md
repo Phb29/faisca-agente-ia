@@ -7,7 +7,7 @@ tipo: politica
 
 # Troca de notebooks
 
-Esta política cobre os notebooks Ampère Vega 15 e Ampère Orion 14 e complementa a política geral de troca. Onde houver diferença, vale o que está escrito aqui.
+Esta política cobre os notebooks Faísca Vega 15 e Faísca Orion 14 e complementa a política geral de troca. Onde houver diferença, vale o que está escrito aqui.
 
 ## Prazos
 
@@ -23,7 +23,7 @@ Se a bateria do notebook apresentar capacidade abaixo de 80% do valor nominal no
 
 ## O que não é defeito
 
-O layout do teclado dos notebooks Ampère é ABNT2 e isso está descrito na página do produto; um teclado com layout diferente do esperado pelo Cliente não é defeito. Ruído leve do cooler sob carga, aquecimento normal e diferenças de brilho entre unidades também não caracterizam defeito.
+O layout do teclado dos notebooks Faísca é ABNT2 e isso está descrito na página do produto; um teclado com layout diferente do esperado pelo Cliente não é defeito. Ruído leve do cooler sob carga, aquecimento normal e diferenças de brilho entre unidades também não caracterizam defeito.
 
 ## Dados do Cliente
 

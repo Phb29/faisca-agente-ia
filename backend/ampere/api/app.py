@@ -37,7 +37,7 @@ def criar_app(
 ) -> FastAPI:
     # Sem /docs, /redoc nem /openapi.json: o contrato fica em `app.openapi()`, para os testes.
     app = FastAPI(
-        title="Suporte Ampère",
+        title="Suporte Faísca",
         version="0.2.0",
         docs_url=None,
         redoc_url=None,

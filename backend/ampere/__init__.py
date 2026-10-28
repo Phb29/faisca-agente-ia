@@ -1,1 +1,1 @@
-"""Suporte Ampère: chatbot de suporte ao Cliente da Ampère Eletrônicos."""
+"""Suporte Faísca: chatbot de suporte ao Cliente da Faísca Eletrônicos."""

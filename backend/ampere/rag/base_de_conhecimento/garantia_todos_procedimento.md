@@ -7,7 +7,7 @@ tipo: procedimento
 
 # Como acionar a garantia
 
-Este procedimento explica como o Cliente abre um chamado de garantia para um produto da Ampère Eletrônicos e o que acontece em cada etapa. Os prazos de cobertura estão nas políticas de garantia de cada linha.
+Este procedimento explica como o Cliente abre um chamado de garantia para um produto da Faísca Eletrônicos e o que acontece em cada etapa. Os prazos de cobertura estão nas políticas de garantia de cada linha.
 
 ## Antes de abrir o chamado
 

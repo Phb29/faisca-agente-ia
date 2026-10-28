@@ -17,7 +17,7 @@ PEDIDOS: list[dict] = [
     {
         "id": "P1001",
         "cliente_id": "cli_ana",
-        "produto": "Notebook Ampère Vega 15",
+        "produto": "Notebook Faísca Vega 15",
         "linha": "notebooks",
         "valor": Decimal("4899.90"),
         "status": "entregue",
@@ -26,7 +26,7 @@ PEDIDOS: list[dict] = [
     {
         "id": "P1002",
         "cliente_id": "cli_ana",
-        "produto": "Fone Ampère Beat",
+        "produto": "Fone Faísca Beat",
         "linha": "acessorios",
         "valor": Decimal("249.90"),
         "status": "entregue",
@@ -35,7 +35,7 @@ PEDIDOS: list[dict] = [
     {
         "id": "P1003",
         "cliente_id": "cli_ana",
-        "produto": "Capa Ampère Shell",
+        "produto": "Capa Faísca Shell",
         "linha": "acessorios",
         "valor": Decimal("89.90"),
         "status": "em_transporte",
@@ -44,7 +44,7 @@ PEDIDOS: list[dict] = [
     {
         "id": "P2001",
         "cliente_id": "cli_bruno",
-        "produto": "Celular Ampère Pulse",
+        "produto": "Celular Faísca Pulse",
         "linha": "celulares",
         "valor": Decimal("2799.00"),
         "status": "em_transporte",
@@ -53,7 +53,7 @@ PEDIDOS: list[dict] = [
     {
         "id": "P2002",
         "cliente_id": "cli_bruno",
-        "produto": "Carregador Ampère Flash 65W",
+        "produto": "Carregador Faísca Flash 65W",
         "linha": "acessorios",
         "valor": Decimal("199.90"),
         "status": "entregue",
@@ -62,7 +62,7 @@ PEDIDOS: list[dict] = [
     {
         "id": "P2003",
         "cliente_id": "cli_bruno",
-        "produto": "Notebook Ampère Orion 14",
+        "produto": "Notebook Faísca Orion 14",
         "linha": "notebooks",
         "valor": Decimal("3499.00"),
         "status": "aguardando_pagamento",
@@ -71,7 +71,7 @@ PEDIDOS: list[dict] = [
     {
         "id": "P3001",
         "cliente_id": "cli_carla",
-        "produto": "Celular Ampère Pulse Mini",
+        "produto": "Celular Faísca Pulse Mini",
         "linha": "celulares",
         "valor": Decimal("1899.00"),
         "status": "devolvido",
@@ -80,7 +80,7 @@ PEDIDOS: list[dict] = [
     {
         "id": "P3002",
         "cliente_id": "cli_carla",
-        "produto": "Capa Ampère Shell",
+        "produto": "Capa Faísca Shell",
         "linha": "acessorios",
         "valor": Decimal("89.90"),
         "status": "entregue",
@@ -89,7 +89,7 @@ PEDIDOS: list[dict] = [
     {
         "id": "P3003",
         "cliente_id": "cli_carla",
-        "produto": "Notebook Ampère Vega 15",
+        "produto": "Notebook Faísca Vega 15",
         "linha": "notebooks",
         "valor": Decimal("4899.90"),
         "status": "cancelado",

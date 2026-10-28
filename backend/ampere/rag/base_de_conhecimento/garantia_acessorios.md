@@ -7,25 +7,25 @@ tipo: politica
 
 # Garantia de acessórios
 
-Esta política cobre o fone Ampère Beat, o carregador Ampère Flash 65W e a capa Ampère Shell, e complementa a política geral de garantia.
+Esta política cobre o fone Faísca Beat, o carregador Faísca Flash 65W e a capa Faísca Shell, e complementa a política geral de garantia.
 
 ## Prazo total
 
-Os acessórios Ampère têm 3 meses (90 dias) de garantia contados do recebimento, que corresponde à garantia legal. Não há garantia contratual adicional para acessórios. É o prazo mais curto entre as linhas da Loja.
+Os acessórios Faísca têm 3 meses (90 dias) de garantia contados do recebimento, que corresponde à garantia legal. Não há garantia contratual adicional para acessórios. É o prazo mais curto entre as linhas da Loja.
 
 ## Substituição em vez de reparo
 
 Acessórios não passam por reparo. Quando o defeito é confirmado, a Loja envia um acessório novo em até 7 dias úteis após a chegada do item com defeito na central. Se o modelo estiver esgotado, o Cliente recebe o reembolso integral ou um crédito na Loja, à escolha dele.
 
-## Fone Ampère Beat
+## Fone Faísca Beat
 
 Cobertos por 3 meses: falha de conexão Bluetooth, um dos lados sem som, estojo que não carrega e bateria que dura menos de 2 horas com carga cheia. Não são cobertos: pontas de silicone perdidas, fone com dano por suor ou água e estojo com marcas de queda. Por higiene, o fone deve ser enviado limpo e com todas as pontas.
 
-## Carregador Ampère Flash 65W
+## Carregador Faísca Flash 65W
 
 Cobertos por 3 meses: carregador que não fornece energia, que aquece a ponto de desligar sozinho e cabo com falha interna sem sinal de dobra ou corte. Não são cobertos: cabo mordido, cortado ou com dobra forçada e carregador queimado por sobretensão na tomada. A Loja não cobre danos em aparelhos de outras marcas ligados ao Flash.
 
-## Capa Ampère Shell
+## Capa Faísca Shell
 
 Cobertos por 3 meses: capa que racha ou solta sem impacto e botões que param de acionar. Não são cobertos: amarelamento, arranhões, desgaste dos cantos e capa que não serve por ter sido comprada para outro modelo de celular.
 

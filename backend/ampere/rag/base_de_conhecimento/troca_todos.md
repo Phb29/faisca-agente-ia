@@ -7,7 +7,7 @@ tipo: politica
 
 # Política geral de troca
 
-Esta política vale para todos os produtos vendidos pela Ampère Eletrônicos, salvo quando a política específica de uma linha (notebooks, celulares ou acessórios) definir uma regra diferente. Nesse caso, a regra da linha prevalece.
+Esta política vale para todos os produtos vendidos pela Faísca Eletrônicos, salvo quando a política específica de uma linha (notebooks, celulares ou acessórios) definir uma regra diferente. Nesse caso, a regra da linha prevalece.
 
 ## Troca por arrependimento
 

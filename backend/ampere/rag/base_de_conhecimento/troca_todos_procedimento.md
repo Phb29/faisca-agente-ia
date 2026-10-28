@@ -7,7 +7,7 @@ tipo: procedimento
 
 # Como solicitar uma troca
 
-Este procedimento explica, passo a passo, como o Cliente pede a troca de um produto comprado na Ampère Eletrônicos. Os prazos e as condições estão nas políticas de troca de cada linha; aqui está só o caminho.
+Este procedimento explica, passo a passo, como o Cliente pede a troca de um produto comprado na Faísca Eletrônicos. Os prazos e as condições estão nas políticas de troca de cada linha; aqui está só o caminho.
 
 ## Antes de começar
 

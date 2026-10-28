@@ -7,7 +7,7 @@ tipo: politica
 
 # Frete de notebooks
 
-Esta política cobre a entrega dos notebooks Ampère Vega 15 e Ampère Orion 14 e complementa a política geral de frete.
+Esta política cobre a entrega dos notebooks Faísca Vega 15 e Faísca Orion 14 e complementa a política geral de frete.
 
 ## Frete grátis
 

@@ -175,7 +175,7 @@ def test_avaliar_geracao_usa_o_prompt_do_grafo_e_julga_duas_vezes():
     assert resultado.vereditos[0].resposta == "A garantia é de 12 meses."
     prompt_do_gerador = gerador.chamadas[0][0].content
     assert "[garantia.md] A garantia de notebooks é de 12 meses." in prompt_do_gerador
-    assert "Ampère" in prompt_do_gerador
+    assert "Faísca" in prompt_do_gerador
 
 
 class QdrantFalso:

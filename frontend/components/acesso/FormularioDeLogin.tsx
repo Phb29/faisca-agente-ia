@@ -94,19 +94,27 @@ export function FormularioDeLogin() {
   const aviso = erro ?? (sessaoVencida ? "Sua sessão terminou. Entre de novo para continuar." : null);
 
   return (
-    <div className="grid min-h-dvh place-items-center px-5 py-12">
-      <div className="w-full max-w-[400px]">
+    <div className="relative grid min-h-dvh place-items-center overflow-hidden px-5 py-12">
+      <div aria-hidden className="aura-faisca pointer-events-none absolute inset-0" />
+      <div className="relative w-full max-w-[400px]">
         {/* method="post": sem JavaScript, a senha nunca vai parar na URL. */}
         <form
           method="post"
           onSubmit={entrar}
-          className="animate-surgir rounded-3xl bg-surface p-8 shadow-flutuante ring-1 ring-line"
+          className="animate-surgir rounded-3xl bg-surface/90 p-8 shadow-flutuante ring-1 ring-line backdrop-blur-xl"
         >
-          <Marca tamanho="lg" />
-          <p className="sobretitulo mt-6">Suporte Ampère</p>
-          <h1 className="mt-2 font-display text-[30px] leading-[1.1] font-semibold tracking-[-0.03em]">Entrar</h1>
+          <div className="flex items-center gap-3">
+            <Marca tamanho="lg" />
+            <div>
+              <p className="font-display text-[22px] leading-none font-bold tracking-[-0.03em]">Faísca</p>
+              <p className="sobretitulo mt-1.5">Agente de IA para suporte</p>
+            </div>
+          </div>
+          <h1 className="mt-8 font-display text-[30px] leading-[1.1] font-bold tracking-[-0.03em]">
+            Bem-vindo de <span className="texto-faisca">volta</span>
+          </h1>
           <p className="mt-2 text-[14.5px] leading-relaxed text-muted">
-            O chat, a Central do Atendente e a Avaliação ficam atrás deste login.
+            Entre para acessar o chat, a Central do Atendente e a Avaliação.
           </p>
 
           {aviso && <Aviso className="mt-5">{aviso}</Aviso>}
@@ -178,7 +186,7 @@ export function FormularioDeLogin() {
           </Botao>
         </form>
 
-        <p className="mt-6 text-center text-[12.5px] text-muted">Acesso restrito à equipe da Ampère.</p>
+        <p className="mt-6 text-center text-[12.5px] text-muted">Acesso restrito à equipe da Faísca.</p>
       </div>
     </div>
   );

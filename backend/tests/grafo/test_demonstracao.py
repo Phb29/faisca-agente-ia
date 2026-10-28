@@ -71,7 +71,7 @@ def test_consulta_de_pedido_usa_a_acao_e_conta_o_resultado(demo):
     estado = demo.turno("qual o status do pedido P1003?")
 
     assert estado["acoes_tomadas"] == ["consultar_pedido"]
-    assert "Capa Ampère Shell" in estado["messages"][-1].content
+    assert "Capa Faísca Shell" in estado["messages"][-1].content
 
 
 def test_reembolso_pequeno_sai_na_hora_e_o_grande_espera_o_atendente(demo):

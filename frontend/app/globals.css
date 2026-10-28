@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /*
- * Tokens do Suporte Ampère. Os componentes só usam as classes semânticas geradas pelo
+ * Tokens da Faísca. Os componentes só usam as classes semânticas geradas pelo
  * @theme abaixo (bg-canvas, text-ink, border-line, bg-volt...), nunca uma cor solta; por
  * isso o tema escuro é só outro conjunto de valores para as mesmas variáveis.
  */
@@ -9,26 +9,31 @@
 :root {
   color-scheme: light;
 
-  --canvas: #f5f3ee;
-  --canvas-2: #eeebe3;
+  --canvas: #f5f4fb;
+  --canvas-2: #ecebf6;
   --surface: #ffffff;
-  --surface-2: #faf9f6;
-  --ink: #121210;
-  --ink-2: #3a3934;
-  --muted: #7a776e;
-  --line: #e6e2d8;
-  --line-strong: #d4cfc2;
+  --surface-2: #fafaff;
+  --ink: #14142b;
+  --ink-2: #3b3b5c;
+  --muted: #74769a;
+  --line: #e5e4f0;
+  --line-strong: #d2d1e3;
 
-  /* acento elétrico: sempre com texto noite por cima, usado com parcimônia */
-  --volt: #d4f25a;
-  --volt-forte: #9fc21c;
+  /* acento da faísca: sempre com texto noite por cima, usado com parcimônia */
+  --volt: #4cc2ff;
+  --volt-forte: #1d9bf0;
+
+  /* o brilho da faísca: ciano, azul e índigo, para a marca e os destaques */
+  --faisca-a: #22d3ee;
+  --faisca-b: #3b82f6;
+  --faisca-c: #6366f1;
 
   /* superfícies de marca: escuras nos dois temas */
-  --noite: #121210;
-  --noite-2: #1c1c19;
-  --noite-texto: #f1efe8;
-  --noite-muted: #8c897f;
-  --noite-line: #2c2b27;
+  --noite: #0f1024;
+  --noite-2: #181a36;
+  --noite-texto: #f3f2ff;
+  --noite-muted: #9a9cc4;
+  --noite-line: #2a2c4d;
 
   --sucesso: #1f7a4d;
   --sucesso-soft: #e6f1ea;
@@ -39,7 +44,7 @@
   --info: #2f5bd3;
   --info-soft: #e9eefb;
 
-  --sombra: 18 18 16;
+  --sombra: 20 20 60;
   --sombra-forca: 1;
 }
 
@@ -47,19 +52,19 @@
   :root {
     color-scheme: dark;
 
-    --canvas: #0d0d0b;
-    --canvas-2: #121210;
-    --surface: #151513;
-    --surface-2: #1b1b18;
-    --ink: #f1efe8;
-    --ink-2: #cfccc2;
-    --muted: #8c897f;
-    --line: #2a2925;
-    --line-strong: #3a3833;
+    --canvas: #0b0c1a;
+    --canvas-2: #10112a;
+    --surface: #14152e;
+    --surface-2: #1a1b38;
+    --ink: #f3f2ff;
+    --ink-2: #cfd0ea;
+    --muted: #9a9cc4;
+    --line: #26284a;
+    --line-strong: #34365c;
 
-    --noite: #0a0a09;
-    --noite-2: #151513;
-    --noite-line: #2a2925;
+    --noite: #08091a;
+    --noite-2: #12132c;
+    --noite-line: #26284a;
 
     --sucesso: #4cc38a;
     --sucesso-soft: rgb(76 195 138 / 0.12);
@@ -220,7 +225,7 @@
 
   ::selection {
     background: var(--volt);
-    color: #121210;
+    color: #14142b;
   }
 
   :focus-visible {
@@ -235,6 +240,25 @@
 }
 
 @layer components {
+  /* o gradiente da marca: no símbolo, nas palavras de destaque e no fundo do login */
+  .gradiente-faisca {
+    background-image: linear-gradient(135deg, var(--faisca-a), var(--faisca-b) 55%, var(--faisca-c));
+  }
+
+  .texto-faisca {
+    background-image: linear-gradient(100deg, var(--faisca-a), var(--faisca-b) 50%, var(--faisca-c));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .aura-faisca {
+    background:
+      radial-gradient(40rem 28rem at 12% 0%, rgb(34 211 238 / 0.2), transparent 70%),
+      radial-gradient(36rem 26rem at 95% 100%, rgb(99 102 241 / 0.2), transparent 70%),
+      radial-gradient(30rem 24rem at 85% 8%, rgb(59 130 246 / 0.18), transparent 70%);
+  }
+
   /* rótulo técnico: caixa alta pequena, mono, com tracking */
   .sobretitulo {
     @apply font-mono text-[10.5px] font-medium tracking-[0.14em] text-muted uppercase;

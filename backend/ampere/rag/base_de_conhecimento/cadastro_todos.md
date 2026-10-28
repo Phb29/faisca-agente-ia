@@ -7,7 +7,7 @@ tipo: politica
 
 # Política de cadastro e dados do Cliente
 
-Esta política descreve como funciona a conta do Cliente na Ampère Eletrônicos e quais dados podem ser alterados.
+Esta política descreve como funciona a conta do Cliente na Faísca Eletrônicos e quais dados podem ser alterados.
 
 ## Dados obrigatórios
 

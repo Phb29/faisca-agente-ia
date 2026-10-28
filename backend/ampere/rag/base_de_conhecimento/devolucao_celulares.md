@@ -7,7 +7,7 @@ tipo: politica
 
 # Devolução de celulares
 
-Esta política cobre a devolução com reembolso dos celulares Ampère Pulse e Ampère Pulse Mini e complementa a política geral de devolução.
+Esta política cobre a devolução com reembolso dos celulares Faísca Pulse e Faísca Pulse Mini e complementa a política geral de devolução.
 
 ## Prazos para pedir
 
@@ -15,7 +15,7 @@ Arrependimento: até 7 dias corridos após o recebimento. Defeito de fabricaçã
 
 ## Preparação obrigatória do aparelho
 
-Antes de postar o celular, o Cliente deve restaurar o aparelho para as configurações de fábrica e desativar o bloqueio de ativação, saindo da conta Google e da conta Ampère ID. Um celular recebido com bloqueio de ativação ligado não pode ser conferido nem revendido, então a devolução é recusada e o aparelho volta ao Cliente com frete de retorno de R$ 39,90 por conta dele. O Cliente pode pedir a devolução de novo, dentro do prazo original, após desbloquear.
+Antes de postar o celular, o Cliente deve restaurar o aparelho para as configurações de fábrica e desativar o bloqueio de ativação, saindo da conta Google e da conta Faísca ID. Um celular recebido com bloqueio de ativação ligado não pode ser conferido nem revendido, então a devolução é recusada e o aparelho volta ao Cliente com frete de retorno de R$ 39,90 por conta dele. O Cliente pode pedir a devolução de novo, dentro do prazo original, após desbloquear.
 
 ## IMEI
 
@@ -27,7 +27,7 @@ Película aplicada na tela não impede a devolução por arrependimento e não g
 
 ## Combos
 
-O Pulse Mini é vendido também em combo com o fone Ampère Beat com desconto. Se o Cliente devolver só o celular do combo, o reembolso é o valor do celular menos o desconto do combo, porque o fone que ficou com o Cliente passa a ser cobrado pelo preço cheio. Devolvendo o combo inteiro, o reembolso é integral.
+O Pulse Mini é vendido também em combo com o fone Faísca Beat com desconto. Se o Cliente devolver só o celular do combo, o reembolso é o valor do celular menos o desconto do combo, porque o fone que ficou com o Cliente passa a ser cobrado pelo preço cheio. Devolvendo o combo inteiro, o reembolso é integral.
 
 ## Conferência e envio
 

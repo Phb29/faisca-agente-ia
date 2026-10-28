@@ -7,11 +7,11 @@ tipo: politica
 
 # Política geral de garantia
 
-A garantia cobre defeitos de fabricação que aparecem depois do prazo de troca direta. Esta política vale para todos os produtos da Ampère Eletrônicos e é complementada pela política de garantia de cada linha, que define o prazo total e regras específicas.
+A garantia cobre defeitos de fabricação que aparecem depois do prazo de troca direta. Esta política vale para todos os produtos da Faísca Eletrônicos e é complementada pela política de garantia de cada linha, que define o prazo total e regras específicas.
 
 ## Prazos por linha
 
-Todo produto tem a garantia legal de 90 dias prevista no Código de Defesa do Consumidor, e a Loja soma a ela uma garantia contratual. O prazo total, contado a partir da data de recebimento, é: notebooks 24 meses (12 meses de fábrica mais 12 meses de garantia contratual Ampère), celulares 12 meses (com bateria coberta por 6 meses) e acessórios 3 meses. Os detalhes estão na política de garantia de cada linha.
+Todo produto tem a garantia legal de 90 dias prevista no Código de Defesa do Consumidor, e a Loja soma a ela uma garantia contratual. O prazo total, contado a partir da data de recebimento, é: notebooks 24 meses (12 meses de fábrica mais 12 meses de garantia contratual Faísca), celulares 12 meses (com bateria coberta por 6 meses) e acessórios 3 meses. Os detalhes estão na política de garantia de cada linha.
 
 ## O que a garantia cobre
 

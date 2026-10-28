@@ -20,7 +20,7 @@ TEXTO = """Introdução sem cabeçalho, explicando o contexto da política de ga
 
 # Garantia de notebooks
 
-A garantia legal dos notebooks é de 90 dias. A garantia contratual da Ampère é de 12 meses.
+A garantia legal dos notebooks é de 90 dias. A garantia contratual da Faísca é de 12 meses.
 Ela cobre defeitos de fabricação. Não cobre danos por mau uso, quedas ou líquidos.
 
 ## Como acionar

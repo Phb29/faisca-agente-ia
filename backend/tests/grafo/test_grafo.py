@@ -48,7 +48,7 @@ def test_caminho_transacao_roda_o_loop_de_acoes_e_grava_tool_message():
     assert estado["intencao"] == "transacao"
     tool_messages = [m for m in estado["messages"] if isinstance(m, ToolMessage)]
     assert len(tool_messages) == 1
-    assert "Notebook Ampère Vega 15" in tool_messages[0].content
+    assert "Notebook Faísca Vega 15" in tool_messages[0].content
     assert estado["acoes_tomadas"] == ["consultar_pedido"]
     assert ultima_resposta(estado) == "Seu Pedido P2 foi entregue."
     assert len(cenario.gerador.chamadas) == 2

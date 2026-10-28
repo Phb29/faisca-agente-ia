@@ -7,7 +7,7 @@ tipo: procedimento
 
 # Como atualizar o cadastro
 
-Este procedimento explica como o Cliente altera cada dado da sua conta na Ampère Eletrônicos. As regras sobre o que pode ou não ser alterado estão na política de cadastro.
+Este procedimento explica como o Cliente altera cada dado da sua conta na Faísca Eletrônicos. As regras sobre o que pode ou não ser alterado estão na política de cadastro.
 
 ## Onde alterar
 

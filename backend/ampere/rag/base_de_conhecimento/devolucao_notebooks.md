@@ -7,7 +7,7 @@ tipo: politica
 
 # Devolução de notebooks
 
-Esta política cobre a devolução com reembolso dos notebooks Ampère Vega 15 e Ampère Orion 14 e complementa a política geral de devolução.
+Esta política cobre a devolução com reembolso dos notebooks Faísca Vega 15 e Faísca Orion 14 e complementa a política geral de devolução.
 
 ## Prazos para pedir
 

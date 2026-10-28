@@ -63,7 +63,7 @@ function LinhaDoAssistente({ children, momento }: { children: ReactNode; momento
       <Marca tamanho="xs" className="mt-[3px]" />
       <div className="min-w-0 flex-1">
         <p className="mb-1 flex items-baseline gap-2">
-          <span className="text-[13px] font-medium text-ink">Ampère</span>
+          <span className="text-[13px] font-semibold text-ink">Faísca</span>
           {momento && (
             <time dateTime={momento} className="font-mono text-[10.5px] text-muted">
               {formatarHora(momento)}

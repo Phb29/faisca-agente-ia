@@ -149,22 +149,23 @@ function PainelDaMarca() {
     <aside className="relative hidden overflow-hidden bg-noite p-12 text-noite-texto lg:flex lg:flex-col lg:justify-between">
       <div aria-hidden className="grade-fina absolute inset-0" />
       <div aria-hidden className="grao absolute inset-0" />
+      <div aria-hidden className="aura-faisca absolute inset-0 opacity-90" />
       <Circuito />
 
       <div className="relative">
-        <Logotipo subtitulo="Suporte" claro />
+        <Logotipo subtitulo="Agente de IA" claro />
       </div>
 
       <div className="relative max-w-[540px]">
-        <p className="sobretitulo animate-surgir text-noite-muted">Ampère Eletrônicos</p>
-        <h2 className="mt-5 animate-surgir font-display text-[clamp(48px,5vw,68px)] leading-[1] font-semibold tracking-[-0.045em] [animation-delay:80ms]">
-          Atendimento
+        <p className="sobretitulo animate-surgir text-noite-muted">Suporte inteligente, 24 horas</p>
+        <h2 className="mt-5 animate-surgir font-display text-[clamp(48px,5vw,68px)] leading-[1] font-bold tracking-[-0.045em] [animation-delay:80ms]">
+          Uma faísca
           <br />
-          que <span className="text-volt">resolve.</span>
+          que <span className="texto-faisca">resolve.</span>
         </h2>
         <p className="mt-6 max-w-md animate-surgir text-[15px] leading-relaxed text-noite-muted [animation-delay:160ms]">
-          Dúvidas de política, Pedidos, Reembolsos e Tickets numa só conversa, com um Atendente
-          humano sempre que o caso pede.
+          Dúvidas, Pedidos, Reembolsos e Tickets numa só conversa, com IA que busca nas políticas
+          da loja e chama um Atendente humano sempre que o caso pede.
         </p>
       </div>
 

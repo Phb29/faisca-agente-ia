@@ -7,11 +7,11 @@ tipo: politica
 
 # Garantia de notebooks
 
-Esta política cobre os notebooks Ampère Vega 15 e Ampère Orion 14 e complementa a política geral de garantia.
+Esta política cobre os notebooks Faísca Vega 15 e Faísca Orion 14 e complementa a política geral de garantia.
 
 ## Prazo total
 
-Os notebooks Ampère têm 24 meses de garantia contados do recebimento: 12 meses de garantia de fábrica (que já incluem os 90 dias legais) mais 12 meses de garantia contratual Ampère, oferecida sem custo adicional. A garantia contratual cobre os mesmos itens da garantia de fábrica.
+Os notebooks Faísca têm 24 meses de garantia contados do recebimento: 12 meses de garantia de fábrica (que já incluem os 90 dias legais) mais 12 meses de garantia contratual Faísca, oferecida sem custo adicional. A garantia contratual cobre os mesmos itens da garantia de fábrica.
 
 ## Bateria
 
@@ -23,7 +23,7 @@ A garantia cobre a tela quando há 3 ou mais pixels mortos em qualquer região o
 
 ## Upgrades pelo Cliente
 
-O Ampère Vega 15 tem slot livre de memória e um segundo slot de SSD. O Cliente pode instalar memória ou SSD por conta própria sem perder a garantia, desde que use os slots de expansão e não rompa o lacre da placa principal. O Ampère Orion 14 tem memória e armazenamento soldados e não tem slots: abrir o Orion 14 rompe o lacre e cancela a garantia.
+O Faísca Vega 15 tem slot livre de memória e um segundo slot de SSD. O Cliente pode instalar memória ou SSD por conta própria sem perder a garantia, desde que use os slots de expansão e não rompa o lacre da placa principal. O Faísca Orion 14 tem memória e armazenamento soldados e não tem slots: abrir o Orion 14 rompe o lacre e cancela a garantia.
 
 ## Prazos de laudo e reparo
 

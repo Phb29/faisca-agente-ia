@@ -32,7 +32,7 @@ PEDIDOS = [
     Pedido(
         id="P1",
         cliente_id="cli_ana",
-        produto="Fone Ampère Beat",
+        produto="Fone Faísca Beat",
         linha="acessorios",
         valor=Decimal("199.90"),
         status="entregue",
@@ -41,7 +41,7 @@ PEDIDOS = [
     Pedido(
         id="P2",
         cliente_id="cli_ana",
-        produto="Notebook Ampère Vega 15",
+        produto="Notebook Faísca Vega 15",
         linha="notebooks",
         valor=Decimal("4899.90"),
         status="entregue",

@@ -74,7 +74,7 @@ export function ListaDeMensagens({
               <AvisoDeAprovacao aprovacao={aprovacao === "generica" ? null : aprovacao} />
             )}
             {status === "escalada" && ultimaEDoAssistente && !aguardando && (
-              <NotaDeSistema>Esta Conversa foi encaminhada a um Atendente da Ampère.</NotaDeSistema>
+              <NotaDeSistema>Esta Conversa foi encaminhada a um Atendente humano.</NotaDeSistema>
             )}
           </ol>
         )}

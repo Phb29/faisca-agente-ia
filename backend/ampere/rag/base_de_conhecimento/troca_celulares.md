@@ -7,7 +7,7 @@ tipo: politica
 
 # Troca de celulares
 
-Esta política cobre os celulares Ampère Pulse e Ampère Pulse Mini e complementa a política geral de troca. Onde houver diferença, vale o que está escrito aqui.
+Esta política cobre os celulares Faísca Pulse e Faísca Pulse Mini e complementa a política geral de troca. Onde houver diferença, vale o que está escrito aqui.
 
 ## Prazos
 
@@ -19,7 +19,7 @@ Diferente dos notebooks, em celulares a Loja considera defeito de tela a presen�
 
 ## Desvinculação de contas
 
-Antes de enviar o celular para troca, o Cliente deve remover o bloqueio de ativação (sair da conta Google ou da conta Ampère ID e desligar o rastreamento do aparelho) e restaurar o aparelho para as configurações de fábrica. Se o celular chegar à central com bloqueio de ativação ligado, a troca é recusada e o aparelho volta para o Cliente, que paga o frete de retorno de R$ 39,90. A troca pode ser pedida de novo dentro do prazo original.
+Antes de enviar o celular para troca, o Cliente deve remover o bloqueio de ativação (sair da conta Google ou da conta Faísca ID e desligar o rastreamento do aparelho) e restaurar o aparelho para as configurações de fábrica. Se o celular chegar à central com bloqueio de ativação ligado, a troca é recusada e o aparelho volta para o Cliente, que paga o frete de retorno de R$ 39,90. A troca pode ser pedida de novo dentro do prazo original.
 
 ## IMEI e nota fiscal
 
@@ -27,7 +27,7 @@ O IMEI do aparelho enviado precisa ser o mesmo que consta na nota fiscal do Pedi
 
 ## Umidade e danos físicos
 
-Os celulares Ampère têm um indicador de umidade na bandeja do chip. Se o indicador estiver acionado, ou se houver trinca, amassado ou marca de queda, a troca por defeito não é feita, pois o dano é considerado acidental e não de fabricação.
+Os celulares Faísca têm um indicador de umidade na bandeja do chip. Se o indicador estiver acionado, ou se houver trinca, amassado ou marca de queda, a troca por defeito não é feita, pois o dano é considerado acidental e não de fabricação.
 
 ## Brindes e acessórios da caixa
 

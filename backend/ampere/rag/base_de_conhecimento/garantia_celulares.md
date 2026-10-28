@@ -7,11 +7,11 @@ tipo: politica
 
 # Garantia de celulares
 
-Esta política cobre os celulares Ampère Pulse e Ampère Pulse Mini e complementa a política geral de garantia.
+Esta política cobre os celulares Faísca Pulse e Faísca Pulse Mini e complementa a política geral de garantia.
 
 ## Prazo total
 
-Os celulares Ampère têm 12 meses de garantia contados do recebimento, que já incluem os 90 dias da garantia legal. Diferente dos notebooks, não há garantia contratual estendida para celulares.
+Os celulares Faísca têm 12 meses de garantia contados do recebimento, que já incluem os 90 dias da garantia legal. Diferente dos notebooks, não há garantia contratual estendida para celulares.
 
 ## Bateria
 
@@ -27,7 +27,7 @@ O carregador e o cabo que acompanham o celular têm garantia de 6 meses, separad
 
 ## Umidade e oxidação
 
-Os celulares Ampère não são à prova d'água. O indicador de umidade na bandeja do chip é verificado no laudo; se estiver acionado, a garantia é cancelada, pois o dano por líquido não é defeito de fabricação.
+Os celulares Faísca não são à prova d'água. O indicador de umidade na bandeja do chip é verificado no laudo; se estiver acionado, a garantia é cancelada, pois o dano por líquido não é defeito de fabricação.
 
 ## Prazos de laudo e reparo
 

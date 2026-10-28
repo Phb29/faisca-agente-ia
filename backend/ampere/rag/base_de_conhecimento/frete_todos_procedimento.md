@@ -7,7 +7,7 @@ tipo: procedimento
 
 # Como rastrear a entrega
 
-Este procedimento explica como o Cliente acompanha a entrega de um Pedido da Ampère Eletrônicos, o que significa cada status de rastreio e quando abrir uma ocorrência. Os prazos de entrega estão nas políticas de frete.
+Este procedimento explica como o Cliente acompanha a entrega de um Pedido da Faísca Eletrônicos, o que significa cada status de rastreio e quando abrir uma ocorrência. Os prazos de entrega estão nas políticas de frete.
 
 ## Onde encontrar o código de rastreio
 
