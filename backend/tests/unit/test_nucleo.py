@@ -274,7 +274,11 @@ def test_jev_por_llm_tenta_de_novo_quando_falta_pergunta_e_depois_desiste():
 
 def test_fabrica_usa_jev_por_llm_com_provedor_de_chat():
     config = Config(
-        _env_file=None, provedor_jev="groq", modelo_jev="qwen/qwen3.8-27b", groq_api_key="x"
+        _env_file=None,
+        modelos_falsos=False,
+        provedor_jev="groq",
+        modelo_jev="qwen/qwen3.8-27b",
+        groq_api_key="x",
     )
 
     assert isinstance(FabricaDeModelos(config).jev(), JevPorLLM)
