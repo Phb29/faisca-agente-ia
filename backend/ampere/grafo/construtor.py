@@ -62,4 +62,4 @@ def construir_grafo(
     grafo.add_edge("escalar", "salvar_memoria")
     grafo.add_edge("salvar_memoria", END)
 
-    return grafo.compile(checkpointer=checkpointer, store=store, name="suporte_ampere")
+    return grafo.compile(checkpointer=checkpointer, store=store, name="faisca")

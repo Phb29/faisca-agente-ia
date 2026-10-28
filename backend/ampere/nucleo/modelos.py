@@ -82,9 +82,15 @@ class FabricaDeModelos:
             elif provedor == "typesafe":
                 self._jev = JevReal(self.config.typesafe_api_key, self.config.modelo_jev)
             else:
+                # A resposta é um JSON curto. Sem teto, o provedor reserva o máximo padrão de
+                # saída, e na camada gratuita da Groq isso estoura o limite por minuto.
                 self._jev = JevPorLLM(
                     self._chat(
-                        provedor, self.config.modelo_jev, temperature=0, **_sem_raciocinio(provedor)
+                        provedor,
+                        self.config.modelo_jev,
+                        temperature=0,
+                        max_tokens=400,
+                        **_sem_raciocinio(provedor),
                     )
                 )
         return self._jev
