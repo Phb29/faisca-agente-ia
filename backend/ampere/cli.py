@@ -5,14 +5,15 @@ modelos de embedding à toa. A montagem do sistema fica em `ampere/composicao.py
 """
 
 import logging
+import sys
 
 import typer
 
 from ampere.nucleo.config import config
 
-app = typer.Typer(help="Suporte Ampère: comandos de operação.", no_args_is_help=True)
+app = typer.Typer(help="Suporte Faísca: comandos de operação.", no_args_is_help=True)
 evals = typer.Typer(
-    help="Suporte Ampère: evals com modelos reais (fora do pytest).", no_args_is_help=True
+    help="Suporte Faísca: evals com modelos reais (fora do pytest).", no_args_is_help=True
 )
 app.add_typer(evals, name="evals")
 
@@ -119,6 +120,10 @@ def hash_senha() -> None:
     typer.echo(gerar_hash(senha))
 
 
+# No Windows o uvicorn usa o ProactorEventLoop, que o psycopg assíncrono do SSE recusa.
+LOOP_DA_API = "asyncio:SelectorEventLoop" if sys.platform == "win32" else "auto"
+
+
 @app.command()
 def api(host: str = "0.0.0.0", port: int = 8000) -> None:
     """Sobe a API HTTP (FastAPI). Com `--host ::`, escuta IPv6 e IPv4 na mesma porta: a rede
@@ -130,9 +135,9 @@ def api(host: str = "0.0.0.0", port: int = 8000) -> None:
     _configurar_logs()
     aplicacao = montar_api(config())
     if host != "::":
-        uvicorn.run(aplicacao, host=host, port=port)
+        uvicorn.run(aplicacao, host=host, port=port, loop=LOOP_DA_API)
         return
-    servidor = uvicorn.Server(uvicorn.Config(aplicacao, host=host, port=port))
+    servidor = uvicorn.Server(uvicorn.Config(aplicacao, host=host, port=port, loop=LOOP_DA_API))
     sock = _socket_ipv6_e_ipv4(port)
     logging.getLogger(__name__).info("api escutando em [::]:%d, IPv6 e IPv4", port)
     servidor.run(sockets=[sock])

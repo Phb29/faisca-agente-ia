@@ -165,4 +165,4 @@ def test_api_em_outro_host_sobe_como_antes(monkeypatch):
     resultado = CliRunner().invoke(cli.app, ["api"])
 
     assert resultado.exit_code == 0, resultado.output
-    assert chamadas == [(_app_vazio, {"host": "0.0.0.0", "port": 8000})]
+    assert chamadas == [(_app_vazio, {"host": "0.0.0.0", "port": 8000, "loop": cli.LOOP_DA_API})]
