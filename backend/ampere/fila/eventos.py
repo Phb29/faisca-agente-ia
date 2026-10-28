@@ -61,12 +61,21 @@ def publicar(conn: psycopg.Connection, nome_do_canal: str, evento: Evento) -> No
 class Escuta:
     """Um LISTEN num canal, numa conexão dedicada. `abrir` faz o LISTEN antes de qualquer
     consumo, para quem precisa garantir que nenhum evento se perca entre a resposta HTTP e
-    o primeiro `async for` (o SSE)."""
+    o primeiro `async for` (o SSE).
+
+    Fechar a conexão enquanto `notifies()` espera deixa um socket fechado registrado no loop,
+    e no Windows o `select()` derruba a api inteira. Por isso, durante a iteração, `fechar`
+    só marca o fim: a iteração acorda a cada `INTERVALO` segundos e fecha a conexão ao sair,
+    seja por esse fim, seja por ter sido encerrada por quem a consome."""
+
+    INTERVALO = 1.0
 
     def __init__(self, conn_string: str, nome_do_canal: str) -> None:
         self._conn_string = conn_string
         self._canal = nome_do_canal
         self._conn: psycopg.AsyncConnection | None = None
+        self._encerrada = False
+        self._iterando = False
 
     async def abrir(self) -> "Escuta":
         self._conn = await conectar_async(self._conn_string, autocommit=True)
@@ -75,10 +84,22 @@ class Escuta:
 
     async def __aiter__(self) -> AsyncIterator[Evento]:
         assert self._conn is not None, "chame abrir() antes de iterar"
-        async for notificacao in self._conn.notifies():
-            yield Evento.model_validate_json(notificacao.payload)
+        self._iterando = True
+        try:
+            while not self._encerrada:
+                async for notificacao in self._conn.notifies(timeout=self.INTERVALO):
+                    yield Evento.model_validate_json(notificacao.payload)
+        finally:
+            # aqui nenhum notifies() está esperando: fechar é seguro
+            self._iterando = False
+            await self._fechar_conexao()
 
     async def fechar(self) -> None:
+        self._encerrada = True
+        if not self._iterando:
+            await self._fechar_conexao()
+
+    async def _fechar_conexao(self) -> None:
         if self._conn is not None:
             await self._conn.close()
             self._conn = None
