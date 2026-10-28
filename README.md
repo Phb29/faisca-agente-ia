@@ -154,6 +154,3 @@ Cada pasta de [backend/ampere](backend/ampere) tem um README curto explicando o 
 
 As decisões de arquitetura do projeto original estão em [docs/adr](docs/adr), e o glossário em [CONTEXT.md](CONTEXT.md).
 
-## Créditos e licença
-
-Projeto original: [suporte-ampere](https://github.com/anwarhermuche/suporte-ampere), de Anwar Hermuche. Adaptações: Paulo Henrique Batista de Jesus. Licença [MIT](LICENSE).
