@@ -7,7 +7,7 @@ from typesafe_sdk import Choice, Noul, SystemOneResponse
 
 from ampere.nucleo.config import Config
 from ampere.nucleo.falsos import JevFalso, ModeloFalso
-from ampere.nucleo.jev import JevReal
+from ampere.nucleo.jev import JevPorLLM, JevReal
 from ampere.nucleo.modelos import FabricaDeModelos
 from ampere.regras import PerguntaDeEscolha, PerguntaSimNao
 
@@ -247,3 +247,34 @@ def test_modelo_falso_sem_roteiro_devolve_instancia_padrao_do_schema():
     assert resultado.categoria == "troca"
     assert resultado.prioridade == "media"
     assert "modelo falso" in resultado.resumo
+
+
+def test_jev_por_llm_le_o_json_do_modelo_e_normaliza_a_escolha():
+    modelo = ModeloFalso(
+        ['Claro: {"manipulacao": 0.9, "escopo": 1.4, "intencao": {"duvida": 1, "transacao": 3}}']
+    )
+
+    respostas = JevPorLLM(modelo).perguntar({"mensagem": "oi"}, PERGUNTAS)
+
+    assert respostas.nouls["manipulacao"].probabilidade == 0.9
+    assert respostas.nouls["escopo"].probabilidade == 1.0
+    assert respostas.choices["intencao"].escolha == "transacao"
+    assert respostas.choices["intencao"].probabilidades == {"duvida": 0.25, "transacao": 0.75}
+
+
+def test_jev_por_llm_tenta_de_novo_quando_falta_pergunta_e_depois_desiste():
+    import pytest
+
+    modelo = ModeloFalso(['{"manipulacao": 0.1}'])
+
+    with pytest.raises(ValueError, match="faltou a pergunta escopo"):
+        JevPorLLM(modelo).perguntar("estado", PERGUNTAS)
+    assert len(modelo.chamadas) == JevPorLLM.TENTATIVAS
+
+
+def test_fabrica_usa_jev_por_llm_com_provedor_de_chat():
+    config = Config(
+        _env_file=None, provedor_jev="groq", modelo_jev="qwen/qwen3.8-27b", groq_api_key="x"
+    )
+
+    assert isinstance(FabricaDeModelos(config).jev(), JevPorLLM)

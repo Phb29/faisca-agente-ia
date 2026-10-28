@@ -19,7 +19,7 @@ from ampere.nucleo.demonstracao import (
     TrabalhadorDeDemonstracao,
 )
 from ampere.nucleo.falsos import ModeloFalso
-from ampere.nucleo.jev import ClienteJev, JevReal
+from ampere.nucleo.jev import ClienteJev, JevPorLLM, JevReal
 
 
 class FabricaDeModelos:
@@ -76,10 +76,17 @@ class FabricaDeModelos:
 
     def jev(self) -> ClienteJev:
         if self._jev is None:
+            provedor = self.config.provedor_jev
             if self.config.modelos_falsos:
                 self._jev = JevDeDemonstracao()
+            elif provedor == "typesafe":
+                self._jev = JevReal(self.config.typesafe_api_key, self.config.modelo_jev)
             else:
-                self._jev = JevReal(self.config.typesafe_api_key)
+                self._jev = JevPorLLM(
+                    self._chat(
+                        provedor, self.config.modelo_jev, temperature=0, **_sem_raciocinio(provedor)
+                    )
+                )
         return self._jev
 
     def _chat(self, provedor: Provedor, modelo: str, **opcoes: Any) -> BaseChatModel:

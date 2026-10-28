@@ -32,6 +32,9 @@ class Config(BaseSettings):
     modelo_juiz: str = "gpt-6.1-sol"
     provedor_trabalhador: Provedor = "groq"
     modelo_trabalhador: str = "openai/gpt-oss-120b"
+    # O Jev da TypeSafe, ou um modelo de chat no papel dele (ver nucleo/jev.py)
+    provedor_jev: Literal["typesafe", "openai", "groq"] = "typesafe"
+    modelo_jev: str = "jev-latest"
 
     # RAG (ver docs/adr/0003)
     embedder: Literal["minilm", "openai"] = "minilm"

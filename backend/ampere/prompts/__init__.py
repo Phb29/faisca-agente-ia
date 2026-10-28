@@ -26,6 +26,7 @@ NOMES = (
     "juiz_fidelidade",
     "juiz_relevancia",
     "juiz_resolucao",
+    "jev_por_llm",
 )
 VARIAVEL = re.compile(r"\{\{(\w+)\}\}")
 
